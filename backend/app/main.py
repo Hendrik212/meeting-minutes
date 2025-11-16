@@ -10,6 +10,7 @@ from db import DatabaseManager
 import json
 from threading import Lock
 from transcript_processor import TranscriptProcessor
+from diarization_service import DiarizationService
 import time
 
 # Load environment variables
@@ -52,6 +53,9 @@ app.add_middleware(
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
+
+# Global diarization service instance
+diarization_service = DiarizationService()
 
 # New Pydantic models for meeting management
 class Transcript(BaseModel):
@@ -629,6 +633,149 @@ async def search_transcripts(request: SearchRequest):
         return JSONResponse(content=results)
     except Exception as e:
         logger.error(f"Error searching transcripts: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ===== Speaker Diarization Endpoints =====
+
+class DiarizeRequest(BaseModel):
+    meeting_id: str
+    audio_path: str
+    num_speakers: Optional[int] = None
+    min_speakers: Optional[int] = 2
+    max_speakers: Optional[int] = 10
+
+class UpdateSpeakerNameRequest(BaseModel):
+    speaker_id: str
+    custom_name: str
+
+async def diarize_meeting_background(meeting_id: str, audio_path: str, num_speakers: Optional[int], min_speakers: int, max_speakers: int):
+    """Background task to perform diarization"""
+    try:
+        logger.info(f"Starting background diarization for meeting: {meeting_id}")
+
+        # Update status to processing
+        await db.save_diarization_result(meeting_id, status="processing")
+
+        # Get existing transcripts for this meeting
+        meeting_data = await db.get_meeting(meeting_id)
+        if not meeting_data:
+            raise ValueError(f"Meeting {meeting_id} not found")
+
+        transcript_segments = meeting_data.get("transcripts", [])
+
+        # Convert transcript format
+        formatted_segments = [
+            {
+                "text": seg.get("text", ""),
+                "start": seg.get("audio_start_time", 0),
+                "end": seg.get("audio_end_time", 0)
+            }
+            for seg in transcript_segments
+        ]
+
+        # Run diarization
+        result = await diarization_service.diarize_meeting(
+            audio_path=audio_path,
+            transcript_segments=formatted_segments,
+            num_speakers=num_speakers,
+            min_speakers=min_speakers,
+            max_speakers=max_speakers
+        )
+
+        # Save speaker labels
+        for speaker_label in result["speakers"]:
+            await db.save_speaker(meeting_id, speaker_label)
+
+        # Update transcripts with speaker information
+        # (This would require updating the transcripts table with speaker_id)
+        # For now, we'll store the aligned results separately
+
+        # Update status to completed
+        await db.save_diarization_result(
+            meeting_id,
+            status="completed",
+            num_speakers=result["summary"]["num_speakers"]
+        )
+
+        logger.info(f"Diarization completed for meeting {meeting_id}")
+
+    except Exception as e:
+        error_msg = f"Diarization error: {str(e)}"
+        logger.error(f"Error in background diarization for {meeting_id}: {error_msg}", exc_info=True)
+        await db.save_diarization_result(meeting_id, status="failed", error=error_msg)
+
+@app.post("/diarize-meeting")
+async def diarize_meeting(request: DiarizeRequest, background_tasks: BackgroundTasks):
+    """Start speaker diarization for a meeting"""
+    try:
+        # Validate meeting exists
+        meeting_data = await db.get_meeting(request.meeting_id)
+        if not meeting_data:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        # Check if audio file exists
+        if not os.path.exists(request.audio_path):
+            raise HTTPException(status_code=404, detail=f"Audio file not found: {request.audio_path}")
+
+        # Start background diarization
+        background_tasks.add_task(
+            diarize_meeting_background,
+            request.meeting_id,
+            request.audio_path,
+            request.num_speakers,
+            request.min_speakers,
+            request.max_speakers
+        )
+
+        return JSONResponse({
+            "message": "Diarization started",
+            "meeting_id": request.meeting_id
+        })
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error starting diarization: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/diarization-status/{meeting_id}")
+async def get_diarization_status(meeting_id: str):
+    """Get diarization status for a meeting"""
+    try:
+        status = await db.get_diarization_status(meeting_id)
+        if not status:
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "status": "not_started",
+                    "message": "Diarization not started for this meeting"
+                }
+            )
+
+        return JSONResponse(content=status)
+
+    except Exception as e:
+        logger.error(f"Error getting diarization status: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/speakers/{meeting_id}")
+async def get_speakers(meeting_id: str):
+    """Get all speakers for a meeting"""
+    try:
+        speakers = await db.get_speakers(meeting_id)
+        return JSONResponse(content=speakers)
+    except Exception as e:
+        logger.error(f"Error getting speakers: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/update-speaker-name")
+async def update_speaker_name(request: UpdateSpeakerNameRequest):
+    """Update a speaker's custom name"""
+    try:
+        await db.update_speaker_name(request.speaker_id, request.custom_name)
+        return {"message": "Speaker name updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating speaker name: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.on_event("shutdown")

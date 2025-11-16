@@ -78,6 +78,8 @@ class DatabaseManager:
                     audio_start_time REAL,
                     audio_end_time REAL,
                     duration REAL,
+                    speaker_id TEXT,
+                    speaker_confidence REAL,
                     FOREIGN KEY (meeting_id) REFERENCES meetings(id)
                 )
             """)
@@ -93,6 +95,14 @@ class DatabaseManager:
                 pass  # Column already exists
             try:
                 cursor.execute("ALTER TABLE transcripts ADD COLUMN duration REAL")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                cursor.execute("ALTER TABLE transcripts ADD COLUMN speaker_id TEXT")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+            try:
+                cursor.execute("ALTER TABLE transcripts ADD COLUMN speaker_confidence REAL")
             except sqlite3.OperationalError:
                 pass  # Column already exists
             
@@ -161,6 +171,31 @@ class DatabaseManager:
                     elevenLabsApiKey TEXT,
                     groqApiKey TEXT,
                     openaiApiKey TEXT
+                )
+            """)
+
+            # Create speakers table for diarization
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS speakers (
+                    id TEXT PRIMARY KEY,
+                    meeting_id TEXT NOT NULL,
+                    speaker_label TEXT NOT NULL,
+                    custom_name TEXT,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (meeting_id) REFERENCES meetings(id)
+                )
+            """)
+
+            # Create diarization_results table to store diarization metadata
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS diarization_results (
+                    meeting_id TEXT PRIMARY KEY,
+                    status TEXT NOT NULL,
+                    num_speakers INTEGER,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    error TEXT,
+                    FOREIGN KEY (meeting_id) REFERENCES meetings(id)
                 )
             """)
 
@@ -893,29 +928,170 @@ class DatabaseManager:
                 # Check if the meeting exists
                 cursor = await conn.execute("SELECT id FROM meetings WHERE id = ?", (meeting_id,))
                 meeting = await cursor.fetchone()
-                
+
                 if not meeting:
                     raise ValueError(f"Meeting with ID {meeting_id} not found")
-                
+
                 # Update the summary in the summary_processes table
                 await conn.execute("""
                     UPDATE summary_processes
                     SET result = ?, updated_at = ?
                     WHERE meeting_id = ?
                 """, (json.dumps(summary), now, meeting_id))
-                
+
                 # Update the meeting's updated_at timestamp
                 await conn.execute("""
                     UPDATE meetings
                     SET updated_at = ?
                     WHERE id = ?
                 """, (now, meeting_id))
-                
+
                 await conn.commit()
                 return True
         except Exception as e:
             logger.error(f"Error updating meeting summary: {str(e)}")
             raise
 
-   
+    # ===== Speaker Diarization Methods =====
+
+    async def save_speaker(self, meeting_id: str, speaker_label: str, custom_name: str = None):
+        """Save speaker information for a meeting"""
+        now = datetime.utcnow().isoformat()
+        speaker_id = f"{meeting_id}_{speaker_label}"
+
+        try:
+            async with self._get_connection() as conn:
+                await conn.execute("BEGIN TRANSACTION")
+
+                try:
+                    # Try to update existing speaker
+                    await conn.execute("""
+                        UPDATE speakers
+                        SET custom_name = ?
+                        WHERE id = ?
+                    """, (custom_name, speaker_id))
+
+                    # If no rows updated, insert new speaker
+                    if conn.total_changes == 0:
+                        await conn.execute("""
+                            INSERT INTO speakers (id, meeting_id, speaker_label, custom_name, created_at)
+                            VALUES (?, ?, ?, ?, ?)
+                        """, (speaker_id, meeting_id, speaker_label, custom_name, now))
+
+                    await conn.commit()
+                    logger.info(f"Saved speaker {speaker_label} for meeting {meeting_id}")
+                    return True
+
+                except Exception as e:
+                    await conn.rollback()
+                    logger.error(f"Failed to save speaker: {str(e)}", exc_info=True)
+                    raise
+
+        except Exception as e:
+            logger.error(f"Database error in save_speaker: {str(e)}", exc_info=True)
+            raise
+
+    async def get_speakers(self, meeting_id: str):
+        """Get all speakers for a meeting"""
+        try:
+            async with self._get_connection() as conn:
+                cursor = await conn.execute("""
+                    SELECT id, speaker_label, custom_name, created_at
+                    FROM speakers
+                    WHERE meeting_id = ?
+                    ORDER BY speaker_label
+                """, (meeting_id,))
+
+                rows = await cursor.fetchall()
+                return [{
+                    'id': row[0],
+                    'speaker_label': row[1],
+                    'custom_name': row[2],
+                    'created_at': row[3]
+                } for row in rows]
+
+        except Exception as e:
+            logger.error(f"Error getting speakers: {str(e)}")
+            raise
+
+    async def update_speaker_name(self, speaker_id: str, custom_name: str):
+        """Update a speaker's custom name"""
+        try:
+            async with self._get_connection() as conn:
+                await conn.execute("""
+                    UPDATE speakers
+                    SET custom_name = ?
+                    WHERE id = ?
+                """, (custom_name, speaker_id))
+
+                await conn.commit()
+                logger.info(f"Updated speaker {speaker_id} name to {custom_name}")
+                return True
+
+        except Exception as e:
+            logger.error(f"Error updating speaker name: {str(e)}")
+            raise
+
+    async def save_diarization_result(self, meeting_id: str, status: str, num_speakers: int = None, error: str = None):
+        """Save diarization result metadata"""
+        now = datetime.utcnow().isoformat()
+
+        try:
+            async with self._get_connection() as conn:
+                await conn.execute("BEGIN TRANSACTION")
+
+                try:
+                    # Try to update existing result
+                    await conn.execute("""
+                        UPDATE diarization_results
+                        SET status = ?, num_speakers = ?, updated_at = ?, error = ?
+                        WHERE meeting_id = ?
+                    """, (status, num_speakers, now, error, meeting_id))
+
+                    # If no rows updated, insert new result
+                    if conn.total_changes == 0:
+                        await conn.execute("""
+                            INSERT INTO diarization_results (meeting_id, status, num_speakers, created_at, updated_at, error)
+                            VALUES (?, ?, ?, ?, ?, ?)
+                        """, (meeting_id, status, num_speakers, now, now, error))
+
+                    await conn.commit()
+                    logger.info(f"Saved diarization result for meeting {meeting_id}: {status}")
+                    return True
+
+                except Exception as e:
+                    await conn.rollback()
+                    logger.error(f"Failed to save diarization result: {str(e)}", exc_info=True)
+                    raise
+
+        except Exception as e:
+            logger.error(f"Database error in save_diarization_result: {str(e)}", exc_info=True)
+            raise
+
+    async def get_diarization_status(self, meeting_id: str):
+        """Get diarization status for a meeting"""
+        try:
+            async with self._get_connection() as conn:
+                cursor = await conn.execute("""
+                    SELECT status, num_speakers, created_at, updated_at, error
+                    FROM diarization_results
+                    WHERE meeting_id = ?
+                """, (meeting_id,))
+
+                row = await cursor.fetchone()
+                if row:
+                    return {
+                        'status': row[0],
+                        'num_speakers': row[1],
+                        'created_at': row[2],
+                        'updated_at': row[3],
+                        'error': row[4]
+                    }
+                return None
+
+        except Exception as e:
+            logger.error(f"Error getting diarization status: {str(e)}")
+            raise
+
+
 
