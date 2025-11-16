@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Mic, Speaker, RefreshCw } from 'lucide-react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from '@/lib/platform';
 
 interface PermissionWarningProps {
   hasMicrophone: boolean;
@@ -24,9 +24,15 @@ export function PermissionWarning({
   const isMacOS = navigator.userAgent.includes('Mac');
 
   const openMicrophoneSettings = async () => {
+    if (!isTauri()) {
+      // Web: Show browser-specific instructions
+      alert('Please grant microphone permission in your browser settings.\n\nUsually found in the address bar or browser settings under Privacy & Security.');
+      return;
+    }
+
     if (isMacOS) {
       try {
-        await invoke('open_system_settings', { preferencePane: 'Privacy_Microphone' });
+        await platformInvoke('open_system_settings', { preferencePane: 'Privacy_Microphone' });
       } catch (error) {
         console.error('Failed to open microphone settings:', error);
       }
@@ -34,9 +40,14 @@ export function PermissionWarning({
   };
 
   const openScreenRecordingSettings = async () => {
+    if (!isTauri()) {
+      // Web: Not applicable
+      return;
+    }
+
     if (isMacOS) {
       try {
-        await invoke('open_system_settings', { preferencePane: 'Privacy_ScreenCapture' });
+        await platformInvoke('open_system_settings', { preferencePane: 'Privacy_ScreenCapture' });
       } catch (error) {
         console.error('Failed to open screen recording settings:', error);
       }
@@ -58,7 +69,7 @@ export function PermissionWarning({
           </AlertTitle>
           {/* Action Buttons */}
           <div className="mt-4 flex flex-wrap gap-2">
-            {isMacOS && !hasMicrophone && (
+            {isTauri() && isMacOS && !hasMicrophone && (
               <button
                 onClick={openMicrophoneSettings}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
@@ -67,13 +78,22 @@ export function PermissionWarning({
                 Open Microphone Settings
               </button>
             )}
-            {isMacOS && !hasSystemAudio && (
+            {isTauri() && isMacOS && !hasSystemAudio && (
               <button
                 onClick={openScreenRecordingSettings}
                 className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md transition-colors"
               >
                 <Speaker className="h-4 w-4" />
                 Open Screen Recording Settings
+              </button>
+            )}
+            {!isTauri() && !hasMicrophone && (
+              <button
+                onClick={openMicrophoneSettings}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-medium text-white bg-amber-600 hover:bg-amber-700 rounded-md transition-colors"
+              >
+                <Mic className="h-4 w-4" />
+                Check Browser Settings
               </button>
             )}
             <button
@@ -96,8 +116,13 @@ export function PermissionWarning({
                   <p className="font-medium">Please check:</p>
                   <ul className="list-disc list-inside ml-2 space-y-1">
                     <li>Your microphone is connected and powered on</li>
-                    <li>Microphone permission is granted in System Settings</li>
+                    {isTauri() ? (
+                      <li>Microphone permission is granted in System Settings</li>
+                    ) : (
+                      <li>Microphone permission is granted in your browser (check address bar for camera/mic icon)</li>
+                    )}
                     <li>No other app is exclusively using the microphone</li>
+                    {!isTauri() && <li>Try clicking "Recheck" after granting permission</li>}
                   </ul>
                 </div>
               </>

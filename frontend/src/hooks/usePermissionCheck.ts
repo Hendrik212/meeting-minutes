@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from '@/lib/platform';
+import * as recordingAdapter from '@/lib/recordingAdapter';
 
 export interface PermissionStatus {
   hasMicrophone: boolean;
@@ -20,33 +21,60 @@ export function usePermissionCheck() {
     setStatus(prev => ({ ...prev, isChecking: true, error: null }));
 
     try {
-      // Get audio devices to check for microphone and system audio availability
-      const devices = await invoke<Array<{ name: string; device_type: 'Input' | 'Output' }>>('get_audio_devices');
+      if (isTauri()) {
+        // Tauri: Get audio devices to check for microphone and system audio availability
+        const devices = await platformInvoke<Array<{ name: string; device_type: 'Input' | 'Output' }>>('get_audio_devices');
 
-      // Check for microphone devices (Input)
-      const inputDevices = devices.filter(d => d.device_type === 'Input');
-      const hasMicrophone = inputDevices.length > 0;
+        // Check for microphone devices (Input)
+        const inputDevices = devices.filter(d => d.device_type === 'Input');
+        const hasMicrophone = inputDevices.length > 0;
 
-      // Check for system audio devices (Output)
-      // On macOS, we need ScreenCaptureKit devices for system audio
-      const outputDevices = devices.filter(d => d.device_type === 'Output');
-      const hasSystemAudio = outputDevices.length > 0;
+        // Check for system audio devices (Output)
+        // On macOS, we need ScreenCaptureKit devices for system audio
+        const outputDevices = devices.filter(d => d.device_type === 'Output');
+        const hasSystemAudio = outputDevices.length > 0;
 
-      console.log('Permission check:', {
-        hasMicrophone,
-        hasSystemAudio,
-        inputDevices: inputDevices.length,
-        outputDevices: outputDevices.length
-      });
+        console.log('Permission check (Tauri):', {
+          hasMicrophone,
+          hasSystemAudio,
+          inputDevices: inputDevices.length,
+          outputDevices: outputDevices.length
+        });
 
-      setStatus({
-        hasMicrophone,
-        hasSystemAudio,
-        isChecking: false,
-        error: null,
-      });
+        setStatus({
+          hasMicrophone,
+          hasSystemAudio,
+          isChecking: false,
+          error: null,
+        });
 
-      return { hasMicrophone, hasSystemAudio };
+        return { hasMicrophone, hasSystemAudio };
+      } else {
+        // Web: Use browser's audio device API
+        const [inputDevices, outputDevices] = await Promise.all([
+          recordingAdapter.getInputDevices(),
+          recordingAdapter.getOutputDevices()
+        ]);
+
+        const hasMicrophone = inputDevices.length > 0;
+        const hasSystemAudio = outputDevices.length > 0; // Web always has "screen audio" option
+
+        console.log('Permission check (Web):', {
+          hasMicrophone,
+          hasSystemAudio,
+          inputDevices: inputDevices.length,
+          outputDevices: outputDevices.length
+        });
+
+        setStatus({
+          hasMicrophone,
+          hasSystemAudio,
+          isChecking: false,
+          error: null,
+        });
+
+        return { hasMicrophone, hasSystemAudio };
+      }
     } catch (error) {
       console.error('Failed to check audio permissions:', error);
       setStatus({
@@ -61,8 +89,14 @@ export function usePermissionCheck() {
 
   const requestPermissions = async () => {
     try {
-      // Trigger audio permission by trying to access devices
-      await invoke('get_audio_devices');
+      if (isTauri()) {
+        // Trigger audio permission by trying to access devices
+        await platformInvoke('get_audio_devices');
+      } else {
+        // Web: Request microphone permission
+        const { requestMicrophonePermission } = await import('@/lib/browserRecording');
+        await requestMicrophonePermission();
+      }
 
       // Recheck after triggering
       setTimeout(() => {
