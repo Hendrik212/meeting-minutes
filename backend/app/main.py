@@ -1,9 +1,9 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
-from typing import Optional, List
+from typing import Optional, List, Dict, Set
 import logging
 from dotenv import load_dotenv
 from db import DatabaseManager
@@ -15,6 +15,7 @@ import os
 import shutil
 from pathlib import Path
 import httpx
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -56,6 +57,74 @@ app.add_middleware(
 
 # Global database manager instance for meeting management endpoints
 db = DatabaseManager()
+
+# ====================================================================
+# WebSocket Connection Manager
+# ====================================================================
+
+class ConnectionManager:
+    """Manages WebSocket connections for real-time transcript updates"""
+
+    def __init__(self):
+        # Store active connections per meeting
+        self.active_connections: Dict[str, Set[WebSocket]] = {}
+        self.lock = Lock()
+
+    async def connect(self, websocket: WebSocket, meeting_id: str = "global"):
+        """Connect a WebSocket client"""
+        await websocket.accept()
+
+        with self.lock:
+            if meeting_id not in self.active_connections:
+                self.active_connections[meeting_id] = set()
+            self.active_connections[meeting_id].add(websocket)
+
+        logger.info(f"WebSocket connected for meeting: {meeting_id}")
+
+    def disconnect(self, websocket: WebSocket, meeting_id: str = "global"):
+        """Disconnect a WebSocket client"""
+        with self.lock:
+            if meeting_id in self.active_connections:
+                self.active_connections[meeting_id].discard(websocket)
+                if not self.active_connections[meeting_id]:
+                    del self.active_connections[meeting_id]
+
+        logger.info(f"WebSocket disconnected for meeting: {meeting_id}")
+
+    async def broadcast(self, message: dict, meeting_id: str = "global"):
+        """Broadcast a message to all connected clients for a meeting"""
+        with self.lock:
+            connections = self.active_connections.get(meeting_id, set()).copy()
+
+        if not connections:
+            logger.debug(f"No active connections for meeting: {meeting_id}")
+            return
+
+        # Send to all connections
+        disconnected = []
+        for connection in connections:
+            try:
+                await connection.send_json(message)
+            except Exception as e:
+                logger.error(f"Error sending to WebSocket: {e}")
+                disconnected.append(connection)
+
+        # Clean up disconnected clients
+        if disconnected:
+            with self.lock:
+                for conn in disconnected:
+                    self.disconnect(conn, meeting_id)
+
+    async def send_personal_message(self, message: dict, websocket: WebSocket):
+        """Send a message to a specific WebSocket client"""
+        try:
+            await websocket.send_json(message)
+        except Exception as e:
+            logger.error(f"Error sending personal message: {e}")
+
+
+# Global connection manager
+websocket_manager = ConnectionManager()
 
 # New Pydantic models for meeting management
 class Transcript(BaseModel):
@@ -841,6 +910,110 @@ async def health_check():
         "service": "meetily-backend",
         "timestamp": time.time()
     }
+
+# ====================================================================
+# WebSocket Endpoints for Real-Time Updates
+# ====================================================================
+
+@app.websocket("/ws/transcripts")
+async def websocket_transcripts_global(websocket: WebSocket):
+    """
+    WebSocket endpoint for global transcript updates
+
+    Clients connect to receive real-time transcript updates for all meetings.
+    """
+    await websocket_manager.connect(websocket, "global")
+
+    try:
+        # Keep connection alive
+        while True:
+            try:
+                # Receive messages from client (ping/pong)
+                data = await websocket.receive_text()
+
+                if data == "ping":
+                    await websocket.send_text("pong")
+
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error: {e}")
+                break
+
+    finally:
+        websocket_manager.disconnect(websocket, "global")
+
+
+@app.websocket("/ws/transcripts/{meeting_id}")
+async def websocket_transcripts_meeting(websocket: WebSocket, meeting_id: str):
+    """
+    WebSocket endpoint for meeting-specific transcript updates
+
+    Clients connect to receive real-time transcript updates for a specific meeting.
+
+    Args:
+        meeting_id: Meeting identifier
+    """
+    await websocket_manager.connect(websocket, meeting_id)
+
+    try:
+        # Send initial connection confirmation
+        await websocket.send_json({
+            "type": "connected",
+            "meeting_id": meeting_id,
+            "message": "Connected to transcript stream"
+        })
+
+        # Keep connection alive
+        while True:
+            try:
+                # Receive messages from client (ping/pong or commands)
+                data = await websocket.receive_text()
+
+                if data == "ping":
+                    await websocket.send_text("pong")
+                elif data.startswith("{"):
+                    # Handle JSON commands if needed
+                    try:
+                        command = json.loads(data)
+                        # Process commands (e.g., request history, etc.)
+                        pass
+                    except json.JSONDecodeError:
+                        pass
+
+            except WebSocketDisconnect:
+                logger.info(f"Client disconnected from meeting {meeting_id}")
+                break
+            except Exception as e:
+                logger.error(f"WebSocket error for meeting {meeting_id}: {e}")
+                break
+
+    finally:
+        websocket_manager.disconnect(websocket, meeting_id)
+
+
+async def broadcast_transcript_update(transcript: dict, meeting_id: str = "global"):
+    """
+    Helper function to broadcast transcript updates to WebSocket clients
+
+    This should be called whenever a new transcript is available.
+    For integration with existing transcript processing.
+
+    Args:
+        transcript: Transcript data dictionary
+        meeting_id: Meeting identifier (default: "global")
+    """
+    message = {
+        "type": "transcript-update",
+        "data": transcript
+    }
+
+    await websocket_manager.broadcast(message, meeting_id)
+
+    # Also broadcast to global channel
+    if meeting_id != "global":
+        await websocket_manager.broadcast(message, "global")
+
 
 @app.on_event("shutdown")
 async def shutdown_event():
