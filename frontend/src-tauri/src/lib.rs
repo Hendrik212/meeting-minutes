@@ -40,6 +40,7 @@ pub mod api;
 pub mod audio;
 pub mod console_utils;
 pub mod database;
+pub mod diarization;
 pub mod notifications;
 pub mod ollama;
 pub mod openrouter;
@@ -660,6 +661,11 @@ pub fn run() {
             // System settings commands
             #[cfg(target_os = "macos")]
             utils::open_system_settings,
+            // Speaker Diarization commands
+            diarization::start_diarization,
+            diarization::get_diarization_status,
+            diarization::get_speakers,
+            diarization::update_speaker_name,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
