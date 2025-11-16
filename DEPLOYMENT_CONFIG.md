@@ -1,99 +1,89 @@
 # Deployment Configuration
 
-## Automatic Reverse Proxy Detection
+## ⚠️ IMPORTANT: Environment Variables Required for Production
 
-The frontend **automatically detects** if it's behind a reverse proxy (Traefik, nginx, etc.) by reading standard proxy headers. **No environment variables or backend changes required!**
+**For production deployments (using a domain name), you MUST set these environment variables:**
 
-### How It Works
+```bash
+NEXT_PUBLIC_API_URL=https://your-backend-url.com
+NEXT_PUBLIC_WS_URL=wss://your-backend-url.com/ws
+```
 
-1. **Next.js API Route** (`/api/config`) reads proxy headers sent to the frontend:
-   - `X-Forwarded-Host` - Original hostname (set by Traefik/nginx)
-   - `X-Forwarded-Proto` - Original protocol (http/https)
+**Auto-detection ONLY works for development:**
+- ✅ `http://localhost:3000` → Backend at `http://localhost:5167`
+- ✅ `http://192.168.1.100:3000` → Backend at `http://192.168.1.100:5167`
+- ❌ `https://meetily.yourdomain.com` → **MUST set environment variables**
 
-2. **Automatic Detection**:
-   - ✅ If proxy headers present → Backend at same host via `/api` path
-   - ✅ If no proxy headers → Direct access on port `5167`
+---
 
-3. **Environment Variable Override** (optional):
-   - `NEXT_PUBLIC_API_URL` - Backend HTTP/HTTPS endpoint
-   - `NEXT_PUBLIC_WS_URL` - WebSocket endpoint
+## Why Environment Variables Are Required
 
-**Key Insight**: Uses Next.js API route which receives the same proxy headers as the frontend, eliminating the chicken-and-egg problem of needing to know the backend URL to ask the backend for its URL!
+The application **cannot automatically guess** where your backend is deployed. Your backend could be:
+- On the same server as the frontend
+- On a completely different server
+- At a different domain entirely
+- Not deployed at all (frontend-only)
+
+Therefore, for production deployments, you **MUST explicitly configure** where the backend is located using environment variables.
 
 ---
 
 ## Deployment Scenarios
 
-### 1. Traefik Reverse Proxy (Automatic - No Config Needed!)
+### 1. Production Deployment (Domain Name) - **REQUIRES ENV VARS**
 
-Traefik automatically sets `X-Forwarded-*` headers - **no environment variables required!**
+You **MUST** set environment variables for any production deployment using a domain name.
+
+#### Example: Backend at Same Domain
 
 ```yaml
 # docker-compose.yml
 services:
   frontend:
-    image: your-frontend:latest
-    # NO ENVIRONMENT VARIABLES NEEDED! Auto-detected via proxy headers ✨
+    build: ./frontend
+    environment:
+      - NEXT_PUBLIC_API_URL=https://meetily.yourdomain.com/api
+      - NEXT_PUBLIC_WS_URL=wss://meetily.yourdomain.com/api/ws
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.frontend.rule=Host(`app.domain.com`)"
-      - "traefik.http.routers.frontend.entrypoints=websecure"
-      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.frontend.rule=Host(`meetily.yourdomain.com`)"
 
   backend:
-    image: your-backend:latest
+    build: ./backend
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`app.domain.com`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.backend.loadbalancer.server.port=5167"
+      - "traefik.http.routers.backend.rule=Host(`meetily.yourdomain.com`) && PathPrefix(`/api`)"
 ```
 
-**What happens:**
-1. User accesses: `https://app.domain.com`
-2. Traefik sets headers: `X-Forwarded-Host: app.domain.com`, `X-Forwarded-Proto: https`
-3. Frontend `/api/config` reads headers from the request
-4. Backend URL automatically detected: `https://app.domain.com/api` ✅
-5. WebSocket automatically detected: `wss://app.domain.com/api/ws` ✅
+#### Example: Backend at Different Domain
 
-### 2. nginx Reverse Proxy
-
-Ensure nginx sets the forwarded headers:
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name app.domain.com;
-
-    location / {
-        proxy_pass http://frontend:3000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;           # Required
-        proxy_set_header X-Forwarded-Proto $scheme;        # Required
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    }
-
-    location /api {
-        proxy_pass http://backend:5167;
-        proxy_set_header Host $host;
-        proxy_set_header X-Forwarded-Host $host;           # Required
-        proxy_set_header X-Forwarded-Proto $scheme;        # Required
-
-        # WebSocket support
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-    }
-}
+```yaml
+# docker-compose.yml or deployment config
+services:
+  frontend:
+    environment:
+      - NEXT_PUBLIC_API_URL=https://api.otherdomain.com
+      - NEXT_PUBLIC_WS_URL=wss://api.otherdomain.com/ws
 ```
 
-**No environment variables needed** - auto-detected from headers! ✨
+#### Example: Frontend-Only Deployment (No Backend)
 
-### 3. Direct Access (Development)
+If you only want to deploy the frontend and users should run their own backend:
 
-No proxy, no problem - just run the services:
+```yaml
+services:
+  frontend:
+    environment:
+      # Point to user's local backend
+      - NEXT_PUBLIC_API_URL=http://localhost:5167
+      - NEXT_PUBLIC_WS_URL=ws://localhost:5167
+```
+
+**Note**: This will only work if users access the frontend from the same machine running the backend.
+
+### 2. Development (Local) - Auto-Detected ✅
+
+No configuration needed! The app automatically detects the backend.
 
 ```bash
 # Backend
@@ -109,234 +99,286 @@ Access at:
 - Frontend: `http://localhost:3000`
 - Backend **automatically detected**: `http://localhost:5167` ✅
 
-### 4. Network Access (No Proxy)
+### 3. Network Access (Local Network) - Auto-Detected ✅
 
-Access from another machine on the network:
+Access from another machine on your local network:
 
+```bash
+# On machine with IP 192.168.1.100
+cd frontend && pnpm run dev
+cd backend && ./clean_start_backend.sh
+```
+
+Access from any machine on the network:
 - Frontend: `http://192.168.1.100:3000`
 - Backend **automatically detected**: `http://192.168.1.100:5167` ✅
 
-**How?** No `X-Forwarded-*` headers present, so the app knows it's direct access and uses port 5167.
+---
+
+## Traefik Configuration Example
+
+### Full Docker Compose with Traefik
+
+```yaml
+# docker-compose.yml
+version: '3.8'
+
+services:
+  traefik:
+    image: traefik:v2.10
+    command:
+      - "--providers.docker=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=your-email@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./acme.json:/acme.json
+
+  frontend:
+    build: ./frontend
+    environment:
+      # REQUIRED: Set your backend URL
+      - NEXT_PUBLIC_API_URL=https://meetily.yourdomain.com/api
+      - NEXT_PUBLIC_WS_URL=wss://meetily.yourdomain.com/api/ws
+    labels:
+      - "traefik.enable=true"
+      # Frontend routes
+      - "traefik.http.routers.frontend.rule=Host(`meetily.yourdomain.com`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      # HTTP to HTTPS redirect
+      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
+      - "traefik.http.routers.frontend-http.rule=Host(`meetily.yourdomain.com`)"
+      - "traefik.http.routers.frontend-http.entrypoints=web"
+      - "traefik.http.routers.frontend-http.middlewares=redirect-to-https"
+
+  backend:
+    build: ./backend
+    labels:
+      - "traefik.enable=true"
+      # Backend routes (at /api path)
+      - "traefik.http.routers.backend.rule=Host(`meetily.yourdomain.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=5167"
+      # Strip /api prefix before forwarding to backend
+      - "traefik.http.middlewares.backend-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.routers.backend.middlewares=backend-stripprefix"
+```
 
 ---
 
-## Environment Variable Override (Optional)
+## nginx Configuration Example
 
-If automatic detection doesn't work or you need custom URLs, set environment variables:
+```nginx
+server {
+    listen 443 ssl;
+    server_name meetily.yourdomain.com;
 
-```bash
-# Production with reverse proxy
-NEXT_PUBLIC_API_URL=https://app.domain.com/api
-NEXT_PUBLIC_WS_URL=wss://app.domain.com/api/ws
+    ssl_certificate /etc/ssl/certs/yourdomain.crt;
+    ssl_certificate_key /etc/ssl/private/yourdomain.key;
 
-# Custom subdomain
-NEXT_PUBLIC_API_URL=https://api.domain.com
-NEXT_PUBLIC_WS_URL=wss://api.domain.com/ws
+    # Frontend
+    location / {
+        proxy_pass http://frontend:3000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    }
 
-# Non-standard path
-NEXT_PUBLIC_API_URL=https://domain.com/backend/api
-NEXT_PUBLIC_WS_URL=wss://domain.com/backend/api/ws
+    # Backend API
+    location /api {
+        proxy_pass http://backend:5167;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # WebSocket support
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
 ```
 
-**Docker Compose example:**
+**Don't forget to set environment variables:**
 
 ```yaml
+# docker-compose.yml
 services:
   frontend:
     environment:
-      - NEXT_PUBLIC_API_URL=https://app.domain.com/api
-      - NEXT_PUBLIC_WS_URL=wss://app.domain.com/api/ws
-```
-
-**Next.js `.env.local` (development):**
-
-```bash
-# .env.local
-NEXT_PUBLIC_API_URL=http://localhost:5167
-NEXT_PUBLIC_WS_URL=ws://localhost:5167
+      - NEXT_PUBLIC_API_URL=https://meetily.yourdomain.com/api
+      - NEXT_PUBLIC_WS_URL=wss://meetily.yourdomain.com/api/ws
 ```
 
 ---
 
 ## Debugging
 
-### Check Detected Configuration
+### Check Configuration Endpoint
 
-**Browser Console Logs:**
+Visit `/api/config` to see detected configuration:
 
+```bash
+# Development
+curl http://localhost:3000/api/config
+
+# Production
+curl https://meetily.yourdomain.com/api/config
+```
+
+**Response when environment variables are set:**
+```json
+{
+  "backendUrl": "https://meetily.yourdomain.com/api",
+  "websocketUrl": "wss://meetily.yourdomain.com/api/ws",
+  "detectedProxy": true,
+  "requiresEnvVar": false,
+  "error": null
+}
+```
+
+**Response when environment variables are MISSING (production):**
+```json
+{
+  "backendUrl": "BACKEND_URL_NOT_CONFIGURED",
+  "websocketUrl": "WEBSOCKET_URL_NOT_CONFIGURED",
+  "detectedProxy": true,
+  "requiresEnvVar": true,
+  "error": "NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL environment variables are required for production deployment"
+}
+```
+
+### Browser Console
+
+Open browser console (F12) and look for configuration logs:
+
+**Development (working):**
 ```javascript
 [Config] ✅ Loaded configuration: {
-  backend: "https://app.domain.com/api",
-  websocket: "wss://app.domain.com/api/ws",
+  backend: "http://localhost:5167",
+  websocket: "ws://localhost:5167",
+  proxied: false
+}
+```
+
+**Production with env vars (working):**
+```javascript
+[Config] ✅ Loaded configuration: {
+  backend: "https://meetily.yourdomain.com/api",
+  websocket: "wss://meetily.yourdomain.com/api/ws",
   proxied: true
 }
 ```
 
-**Direct API Call:**
-
-Visit `/api/config` endpoint to see what was detected:
-
-```bash
-curl https://app.domain.com/api/config
-```
-
-Response:
-```json
-{
-  "backendUrl": "https://app.domain.com/api",
-  "websocketUrl": "wss://app.domain.com/api/ws",
-  "detectedProxy": true,
-  "headers": {
-    "forwardedProto": "https",
-    "forwardedHost": "app.domain.com"
-  }
+**Production WITHOUT env vars (error):**
+```javascript
+[Config] ❌ Loaded configuration: {
+  backend: "BACKEND_URL_NOT_CONFIGURED",
+  websocket: "WEBSOCKET_URL_NOT_CONFIGURED",
+  proxied: true,
+  error: "NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL environment variables are required..."
 }
 ```
 
-### Verify Proxy Headers
+### Common Issues
 
-Check that your reverse proxy is setting the headers:
+#### Issue: "BACKEND_URL_NOT_CONFIGURED" error
 
-```bash
-# Check frontend request headers
-curl -I https://app.domain.com/api/config
+**Cause**: Environment variables not set for production deployment
 
-# Should include:
-# X-Forwarded-Host: app.domain.com
-# X-Forwarded-Proto: https
-```
-
----
-
-## Troubleshooting
-
-### Issue: Backend requests failing
-
-**Symptom:** Browser shows "Failed to fetch" or "Network error"
-
-**Debug steps:**
-
-1. Check `/api/config` endpoint:
-   ```bash
-   curl https://app.domain.com/api/config
-   ```
-
-2. Verify proxy headers are present:
-   ```bash
-   curl -I https://app.domain.com/api/config | grep -i "x-forwarded"
-   ```
-
-3. Check browser console for config logs
-
-4. If headers are missing, add them to your reverse proxy config (see examples above)
-
-5. If auto-detection fails, set environment variables manually
-
-### Issue: WebSocket connection fails
-
-**Symptom:** Real-time transcripts not appearing
-
-**Solutions:**
-
-1. Ensure reverse proxy supports WebSocket upgrades:
-   ```nginx
-   # nginx
-   proxy_http_version 1.1;
-   proxy_set_header Upgrade $http_upgrade;
-   proxy_set_header Connection "upgrade";
-   ```
-
-   ```yaml
-   # Traefik (automatic WebSocket support - no config needed)
-   ```
-
-2. Check WebSocket URL in browser console:
-   ```javascript
-   [Config] ✅ Loaded configuration: {
-     websocket: "wss://app.domain.com/api/ws"  // Should use wss:// for HTTPS
-   }
-   ```
-
-3. Verify backend WebSocket endpoint is accessible:
-   ```bash
-   # Install websocat: https://github.com/vi/websocat
-   websocat wss://app.domain.com/api/ws
-   ```
-
-### Issue: Wrong URLs detected
-
-**Symptom:** URLs don't match your setup
-
-**Solution:** Set environment variables explicitly:
+**Solution**: Set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` in your deployment configuration
 
 ```yaml
-services:
-  frontend:
-    environment:
-      - NEXT_PUBLIC_API_URL=https://your-actual-backend-url/api
-      - NEXT_PUBLIC_WS_URL=wss://your-actual-backend-url/api/ws
+environment:
+  - NEXT_PUBLIC_API_URL=https://your-backend-url.com
+  - NEXT_PUBLIC_WS_URL=wss://your-backend-url.com/ws
 ```
 
-Environment variables **always override** automatic detection.
+#### Issue: Backend requests failing with 502/503/504
 
-### Issue: CORS errors
+**Cause**: Backend not deployed or not accessible at the configured URL
 
-**Symptom:** "CORS policy: No 'Access-Control-Allow-Origin' header"
+**Solutions**:
+1. Verify backend is running: `curl https://your-backend-url.com/health`
+2. Check backend logs for errors
+3. Verify Traefik/nginx routing configuration
+4. Check firewall rules
 
-**Solution:** Configure backend CORS to allow your frontend domain:
+#### Issue: WebSocket connection fails
 
-```python
-# backend/app/main.py
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        "https://app.domain.com",  # Your frontend domain
-        "http://localhost:3000",   # Development
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+**Cause**: Reverse proxy not properly configured for WebSocket upgrades
+
+**nginx solution:**
+```nginx
+proxy_http_version 1.1;
+proxy_set_header Upgrade $http_upgrade;
+proxy_set_header Connection "upgrade";
 ```
+
+**Traefik solution:** (works automatically, no configuration needed)
 
 ---
 
-## Technical Details
+## Environment Variables Reference
 
-### How Proxy Header Detection Works
+### `NEXT_PUBLIC_API_URL` (Required for production)
 
-1. **Frontend makes request** to `/api/config` (Next.js API route)
-2. **Next.js API route** reads incoming request headers:
-   ```typescript
-   const forwardedProto = request.headers.get('x-forwarded-proto');
-   const forwardedHost = request.headers.get('x-forwarded-host');
-   ```
-3. **Determines if proxied**:
-   ```typescript
-   const isProxied = request.headers.has('x-forwarded-host');
-   ```
-4. **Constructs URLs**:
-   - Proxied: `${forwardedProto}://${forwardedHost}/api`
-   - Direct: `${forwardedProto}://${forwardedHost}:5167`
+**Backend HTTP/HTTPS endpoint URL**
 
-5. **Frontend caches** the configuration for all subsequent requests
+Examples:
+```bash
+# Same domain, /api path
+NEXT_PUBLIC_API_URL=https://meetily.yourdomain.com/api
 
-### Why This Works
+# Different domain
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com
 
-- **Reverse proxies** (Traefik, nginx, etc.) automatically set `X-Forwarded-*` headers
-- **Next.js API routes** run on the frontend server and receive the same headers
-- **No chicken-and-egg problem** - we don't need to call the backend to know where the backend is!
-- **Pure frontend solution** - no backend modifications required
+# Different subdomain
+NEXT_PUBLIC_API_URL=https://backend.yourdomain.com
+
+# Non-standard path
+NEXT_PUBLIC_API_URL=https://yourdomain.com/meetily/api
+```
+
+### `NEXT_PUBLIC_WS_URL` (Required for production)
+
+**WebSocket endpoint URL**
+
+Examples:
+```bash
+# Same domain, /api/ws path
+NEXT_PUBLIC_WS_URL=wss://meetily.yourdomain.com/api/ws
+
+# Different domain
+NEXT_PUBLIC_WS_URL=wss://api.yourdomain.com/ws
+
+# HTTP (non-SSL) - only for testing/development
+NEXT_PUBLIC_WS_URL=ws://meetily.yourdomain.com/api/ws
+```
 
 ---
 
 ## Summary
 
-✅ **Traefik**: Auto-detected, no config needed
-✅ **nginx**: Auto-detected with proper headers
-✅ **Direct access**: Auto-detected
-✅ **Network access**: Auto-detected
-✅ **Environment variables**: Optional override
-✅ **No backend changes**: Pure frontend solution
+### Development (localhost/IP)
+- ✅ Auto-detected
+- ✅ No configuration needed
+- ✅ Just run backend and frontend
 
-**Just deploy and it works!** 🚀
+### Production (domain name)
+- ⚠️ **MUST set environment variables**
+- ⚠️ **Cannot auto-detect backend location**
+- ✅ Set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`
+- ✅ Deploy both frontend and backend (or configure frontend to point to external backend)
+
+**The golden rule**: If you're using a domain name, set the environment variables!
