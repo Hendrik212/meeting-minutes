@@ -9,7 +9,8 @@ import AnalyticsProvider from '@/components/AnalyticsProvider'
 import { Toaster } from 'sonner'
 import "sonner/dist/styles.css"
 import { useState, useEffect } from 'react'
-import { isTauri, platformInvoke, platformListen } from '@/lib/platform'
+import { listen } from '@tauri-apps/api/event'
+import { invoke } from '@tauri-apps/api/core'
 import { LegacyDatabaseImport } from '@/components/DatabaseImport/LegacyDatabaseImport'
 import { TooltipProvider } from '@/components/ui/tooltip'
 import { RecordingStateProvider } from '@/contexts/RecordingStateContext'
@@ -31,13 +32,8 @@ export default function RootLayout({
   const [showImportDialog, setShowImportDialog] = useState(false)
 
   useEffect(() => {
-    // Only run first launch detection in Tauri
-    if (!isTauri()) {
-      return;
-    }
-
     // Check first launch state immediately on mount (reliable)
-    platformInvoke<boolean>('check_first_launch')
+    invoke<boolean>('check_first_launch')
       .then((isFirstLaunch) => {
         console.log('First launch check result:', isFirstLaunch)
         if (isFirstLaunch) {
@@ -50,13 +46,13 @@ export default function RootLayout({
       })
 
     // Also listen for events (fallback for hot reload and edge cases)
-    const unlistenFirstLaunch = platformListen('first-launch-detected', () => {
+    const unlistenFirstLaunch = listen('first-launch-detected', () => {
       console.log('First launch event received - showing import dialog')
       setShowImportDialog(true)
     })
 
     // Listen for database initialized event
-    const unlistenDbInit = platformListen('database-initialized', () => {
+    const unlistenDbInit = listen('database-initialized', () => {
       console.log('Database initialized - hiding import dialog')
       setShowImportDialog(false)
     })
@@ -86,13 +82,10 @@ export default function RootLayout({
           </RecordingStateProvider>
         </AnalyticsProvider>
         <Toaster position="bottom-center" richColors closeButton />
-        {/* Only show database import dialog in Tauri */}
-        {isTauri() && (
-          <LegacyDatabaseImport
-            isOpen={showImportDialog}
-            onComplete={() => setShowImportDialog(false)}
-          />
-        )}
+        <LegacyDatabaseImport
+          isOpen={showImportDialog}
+          onComplete={() => setShowImportDialog(false)}
+        />
       </body>
     </html>
   )

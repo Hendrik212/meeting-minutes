@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Transcript, Summary } from '@/types';
 import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { platformInvoke } from '@/lib/platform';
+import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 
 interface UseMeetingDataProps {
@@ -40,7 +40,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
 
   const handleSaveMeetingTitle = useCallback(async () => {
     try {
-      await platformInvoke('api_save_meeting_title', {
+      await invokeTauri('api_save_meeting_title', {
         meetingId: meeting.id,
         title: meetingTitle,
       });
@@ -93,7 +93,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
         };
       }
 
-      await platformInvoke('api_save_meeting_summary', {
+      await invokeTauri('api_save_meeting_summary', {
         meetingId: meeting.id,
         summary: formattedSummary,
       });

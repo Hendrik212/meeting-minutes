@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
 
 export const useAudioPlayer = (audioPath: string | null) => {
   const [isPlaying, setIsPlaying] = useState(false);

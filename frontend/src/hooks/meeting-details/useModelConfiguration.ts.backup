@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ModelConfig } from '@/components/ModelSettingsModal';
-import { platformInvoke } from '@/lib/platform';
+import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -24,7 +24,7 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
       setIsLoading(true);
       try {
         console.log('🔄 Fetching model configuration from database...');
-        const data = await platformInvoke('api_get_model_config', {}) as any;
+        const data = await invokeTauri('api_get_model_config', {}) as any;
         if (data && data.provider !== null) {
           console.log('✅ Loaded model config from database:', {
             provider: data.provider,
@@ -36,7 +36,7 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
           // Fetch API key if not included and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
             try {
-              const apiKeyData = await platformInvoke('api_get_api_key', {
+              const apiKeyData = await invokeTauri('api_get_api_key', {
                 provider: data.provider
               }) as string;
               data.apiKey = apiKeyData;
@@ -105,7 +105,7 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
         );
       }
 
-      await platformInvoke('api_save_model_config', {
+      await invokeTauri('api_save_model_config', {
         provider: payload.provider,
         model: payload.model,
         whisperModel: payload.whisperModel,

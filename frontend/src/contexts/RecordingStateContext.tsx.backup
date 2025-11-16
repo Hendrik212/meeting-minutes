@@ -1,17 +1,16 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { isTauri, platformInvoke, platformListen } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 /**
- * Recording state synchronized with backend (Tauri) or local state (Web)
+ * Recording state synchronized with backend
  * This context provides a single source of truth for recording state
- * that automatically syncs with the Rust backend in Tauri, solving:
+ * that automatically syncs with the Rust backend, solving:
  * 1. Page refresh desync (backend recording but UI shows stopped)
  * 2. Pause state visibility across components
  * 3. Comprehensive state for future features (reconnection, etc.)
- *
- * In web mode, state is maintained locally since there's no backend sync needed.
  */
 
 interface RecordingState {
@@ -49,23 +48,18 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   /**
-   * Sync recording state with backend (Tauri only)
+   * Sync recording state with backend
    * Called on mount (fixes refresh desync) and periodically while recording
    */
   const syncWithBackend = async () => {
-    if (!isTauri()) {
-      // Web: No backend sync needed
-      return;
-    }
-
     try {
-      const backendState = await platformInvoke<{
+      const backendState = await invoke('get_recording_state') as {
         is_recording: boolean;
         is_paused: boolean;
         is_active: boolean;
         recording_duration: number | null;
         active_duration: number | null;
-      }>('get_recording_state');
+      };
 
       setState({
         isRecording: backendState.is_recording,
@@ -86,8 +80,6 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
    * Start polling backend state (called when recording starts)
    */
   const startPolling = () => {
-    if (!isTauri()) return; // Web: No polling needed
-
     if (pollingIntervalRef.current) {
       clearInterval(pollingIntervalRef.current);
     }
@@ -108,23 +100,17 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
   };
 
   /**
-   * Set up event listeners for backend state changes (Tauri only)
+   * Set up event listeners for backend state changes
    */
   useEffect(() => {
-    if (!isTauri()) {
-      // Web: No backend events to listen to
-      console.log('[RecordingStateContext] Web mode - skipping event listeners');
-      return;
-    }
-
     console.log('[RecordingStateContext] Setting up event listeners');
     const unsubscribers: (() => void)[] = [];
 
     const setupListeners = async () => {
       try {
         // Recording started
-        const unlistenStarted = await platformListen('recording-started', (payload) => {
-          console.log('[RecordingStateContext] Recording started event:', payload);
+        const unlistenStarted = await listen('recording-started', (event) => {
+          console.log('[RecordingStateContext] Recording started event:', event.payload);
           setState(prev => ({
             ...prev,
             isRecording: true,
@@ -136,8 +122,8 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
         unsubscribers.push(unlistenStarted);
 
         // Recording stopped
-        const unlistenStopped = await platformListen('recording-stopped', (payload) => {
-          console.log('[RecordingStateContext] Recording stopped event:', payload);
+        const unlistenStopped = await listen('recording-stopped', (event) => {
+          console.log('[RecordingStateContext] Recording stopped event:', event.payload);
           setState({
             isRecording: false,
             isPaused: false,
@@ -150,8 +136,8 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
         unsubscribers.push(unlistenStopped);
 
         // Recording paused
-        const unlistenPaused = await platformListen('recording-paused', (payload) => {
-          console.log('[RecordingStateContext] Recording paused event:', payload);
+        const unlistenPaused = await listen('recording-paused', (event) => {
+          console.log('[RecordingStateContext] Recording paused event:', event.payload);
           setState(prev => ({
             ...prev,
             isPaused: true,
@@ -161,8 +147,8 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
         unsubscribers.push(unlistenPaused);
 
         // Recording resumed
-        const unlistenResumed = await platformListen('recording-resumed', (payload) => {
-          console.log('[RecordingStateContext] Recording resumed event:', payload);
+        const unlistenResumed = await listen('recording-resumed', (event) => {
+          console.log('[RecordingStateContext] Recording resumed event:', event.payload);
           setState(prev => ({
             ...prev,
             isPaused: false,
@@ -187,16 +173,12 @@ export function RecordingStateProvider({ children }: { children: React.ReactNode
   }, []);
 
   /**
-   * Initial sync on mount - CRITICAL for fixing refresh desync bug (Tauri only)
+   * Initial sync on mount - CRITICAL for fixing refresh desync bug
    * If backend is recording but UI state is false, this will correct it
    */
   useEffect(() => {
-    if (isTauri()) {
-      console.log('[RecordingStateContext] Initial mount - syncing with backend');
-      syncWithBackend();
-    } else {
-      console.log('[RecordingStateContext] Web mode - using local state only');
-    }
+    console.log('[RecordingStateContext] Initial mount - syncing with backend');
+    syncWithBackend();
   }, []);
 
   return (

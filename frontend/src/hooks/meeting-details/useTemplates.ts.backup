@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { platformInvoke } from '@/lib/platform';
+import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -15,7 +15,7 @@ export function useTemplates() {
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
-        const templates = await platformInvoke('api_list_templates') as Array<{
+        const templates = await invokeTauri('api_list_templates') as Array<{
           id: string;
           name: string;
           description: string;
