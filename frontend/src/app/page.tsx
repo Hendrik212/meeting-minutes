@@ -512,18 +512,13 @@ export default function Home() {
             <div className="w-96 border-l border-gray-200 bg-white overflow-y-auto">
               <AISummary
                 summary={summary.aiSummary}
-                summaryResponse={summary.summaryResponse}
                 status={summary.summaryStatus}
                 error={summary.summaryError}
-                isLoading={isSummaryLoading}
-                onGenerate={handleGenerateSummary}
-                onRegenerate={handleRegenerateSummary}
-                onClose={() => setShowSummary(false)}
-                customPrompt={customPrompt}
-                onCustomPromptChange={setCustomPrompt}
-                modelConfig={modelConfig}
-                modelOptions={modelOptions}
-                onModelConfigChange={updateModelConfig}
+                onSummaryChange={(newSummary) => {
+                  // Update summary state when changed in the component
+                  summary.setAiSummary(newSummary);
+                }}
+                onRegenerateSummary={handleRegenerateSummary}
               />
             </div>
           )}
@@ -550,7 +545,7 @@ export default function Home() {
                 <h3 className="text-lg font-semibold mb-4">Audio Devices</h3>
                 <DeviceSelection
                   selectedDevices={recording.selectedDevices}
-                  onDeviceChange={recording.updateSelectedDevices}
+                  onDeviceChange={recording.setSelectedDevices}
                   disabled={effectiveIsRecording}
                 />
               </div>
@@ -558,27 +553,23 @@ export default function Home() {
               {/* Language Selection */}
               <div>
                 <h3 className="text-lg font-semibold mb-4">Language</h3>
-                <LanguageSelection disabled={effectiveIsRecording} />
+                <LanguageSelection
+                  selectedLanguage={recording.selectedLanguage}
+                  onLanguageChange={recording.setSelectedLanguage}
+                  disabled={effectiveIsRecording}
+                  provider={transcriptModelConfig.provider}
+                />
               </div>
 
               {/* Transcript Settings */}
               <div>
                 <h3 className="text-lg font-semibold mb-4">Transcript Model</h3>
                 <TranscriptSettings
-                  provider={transcriptModelConfig.provider}
-                  model={transcriptModelConfig.model}
-                  apiKey={transcriptModelConfig.apiKey}
-                  onProviderChange={(provider) =>
-                    setTranscriptModelConfig(prev => ({ ...prev, provider }))
-                  }
-                  onModelChange={(model) =>
-                    setTranscriptModelConfig(prev => ({ ...prev, model }))
-                  }
-                  onApiKeyChange={(apiKey) =>
-                    setTranscriptModelConfig(prev => ({ ...prev, apiKey }))
-                  }
-                  onSave={() => handleSaveTranscriptConfig(transcriptModelConfig)}
-                  disabled={effectiveIsRecording}
+                  transcriptModelConfig={transcriptModelConfig}
+                  setTranscriptModelConfig={setTranscriptModelConfig}
+                  onModelSelect={() => {
+                    // Optional: handle model selection completion
+                  }}
                 />
               </div>
 
