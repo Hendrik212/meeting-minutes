@@ -152,9 +152,17 @@ class DatabaseManager:
                     deepgramApiKey TEXT,
                     elevenLabsApiKey TEXT,
                     groqApiKey TEXT,
-                    openaiApiKey TEXT
+                    openaiApiKey TEXT,
+                    diarization INTEGER DEFAULT 0
                 )
             """)
+
+            # Migrate existing transcript_settings table to add diarization column
+            try:
+                cursor.execute("SELECT diarization FROM transcript_settings LIMIT 1")
+            except Exception:
+                # Column doesn't exist, add it
+                cursor.execute("ALTER TABLE transcript_settings ADD COLUMN diarization INTEGER DEFAULT 0")
 
             conn.commit()
 
@@ -645,7 +653,7 @@ class DatabaseManager:
     async def get_transcript_config(self):
         """Get the current transcript configuration"""
         async with self._get_connection() as conn:
-            cursor = await conn.execute("SELECT provider, model FROM transcript_settings")
+            cursor = await conn.execute("SELECT provider, model, diarization FROM transcript_settings")
             row = await cursor.fetchone()
             if row:
                 return dict(zip([col[0] for col in cursor.description], row))
@@ -653,21 +661,22 @@ class DatabaseManager:
                 # Return default configuration if no transcript settings exist
                 return {
                     "provider": "localWhisper",
-                    "model": "large-v3"
+                    "model": "large-v3",
+                    "diarization": 0
                 }
 
-    async def save_transcript_config(self, provider: str, model: str):
+    async def save_transcript_config(self, provider: str, model: str, diarization: int = 0):
         """Save the transcript settings"""
         # Input validation
         if not provider or not provider.strip():
             raise ValueError("Provider cannot be empty")
         if not model or not model.strip():
             raise ValueError("Model cannot be empty")
-            
+
         try:
             async with self._get_connection() as conn:
                 await conn.execute("BEGIN TRANSACTION")
-                
+
                 try:
                     # Check if the configuration already exists
                     cursor = await conn.execute("SELECT id FROM transcript_settings")
@@ -675,25 +684,25 @@ class DatabaseManager:
                     if existing_config:
                         # Update existing configuration
                         await conn.execute("""
-                            UPDATE transcript_settings 
-                            SET provider = ?, model = ?
+                            UPDATE transcript_settings
+                            SET provider = ?, model = ?, diarization = ?
                             WHERE id = '1'
-                        """, (provider, model))
+                        """, (provider, model, diarization))
                     else:
                         # Insert new configuration
                         await conn.execute("""
-                            INSERT INTO transcript_settings (id, provider, model)
-                            VALUES (?, ?, ?)
-                        """, ('1', provider, model))
-                    
+                            INSERT INTO transcript_settings (id, provider, model, diarization)
+                            VALUES (?, ?, ?, ?)
+                        """, ('1', provider, model, diarization))
+
                     await conn.commit()
-                    logger.info(f"Successfully saved transcript configuration: {provider}/{model}")
-                    
+                    logger.info(f"Successfully saved transcript configuration: {provider}/{model}, diarization: {diarization}")
+
                 except Exception as e:
                     await conn.rollback()
                     logger.error(f"Failed to save transcript configuration: {str(e)}", exc_info=True)
                     raise
-                    
+
         except Exception as e:
             logger.error(f"Database connection error in save_transcript_config: {str(e)}", exc_info=True)
             raise

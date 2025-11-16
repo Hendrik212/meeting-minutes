@@ -11,6 +11,9 @@ import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { LanguageSelection } from '@/components/LanguageSelection';
 import * as recordingAdapter from '@/lib/recordingAdapter';
 
+// Backend API URL - must be full URL for web browser
+const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5167';
+
 type SettingsTab = 'general' | 'recording' | 'Transcriptionmodels' | 'summaryModels';
 
 export default function SettingsPage() {
@@ -41,7 +44,7 @@ export default function SettingsPage() {
           config = await platformInvoke('api_get_transcript_config');
         } else {
           // Web: Call backend API directly
-          const response = await fetch('/api/get-transcript-config');
+          const response = await fetch(`${BACKEND_URL}/get-transcript-config`);
           if (response.ok) {
             config = await response.json();
           }
@@ -91,7 +94,7 @@ export default function SettingsPage() {
         });
       } else {
         // Web: Call backend API directly
-        const response = await fetch('/api/save-transcript-config', {
+        const response = await fetch(`${BACKEND_URL}/save-transcript-config`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
