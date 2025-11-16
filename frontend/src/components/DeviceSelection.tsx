@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
 import { RefreshCw, Mic, Speaker } from 'lucide-react';
 import { AudioLevelMeter, CompactAudioLevelMeter } from './AudioLevelMeter';
 import { AudioBackendSelector } from './AudioBackendSelector';
 import Analytics from '@/lib/analytics';
+import { isTauri, platformListen } from '@/lib/platform';
+import * as recordingAdapter from '@/lib/recordingAdapter';
 
 export interface AudioDevice {
   name: string;
@@ -36,7 +36,10 @@ interface DeviceSelectionProps {
 }
 
 export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = false }: DeviceSelectionProps) {
-  const [devices, setDevices] = useState<AudioDevice[]>([]);
+  const [devices, setDevices] = useState<{ input: recordingAdapter.RecordingDevice[], output: recordingAdapter.RecordingDevice[] }>({
+    input: [],
+    output: []
+  });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -44,17 +47,23 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [showLevels, setShowLevels] = useState(false);
 
-  // Filter devices by type
-  const inputDevices = devices.filter(device => device.device_type === 'Input');
-  const outputDevices = devices.filter(device => device.device_type === 'Output');
+  // Convert recording adapter devices to AudioDevice format for compatibility
+  const inputDevices = devices.input.map(d => ({ name: d.name, device_type: 'Input' as const }));
+  const outputDevices = devices.output.map(d => ({ name: d.name, device_type: 'Output' as const }));
 
-  // Fetch available audio devices
+  // Fetch available audio devices using recording adapter
   const fetchDevices = async () => {
     try {
       setError(null);
-      const result = await invoke<AudioDevice[]>('get_audio_devices');
-      setDevices(result);
-      console.log('Fetched audio devices:', result);
+
+      // Use recording adapter which works in both Tauri and web
+      const [inputDev, outputDev] = await Promise.all([
+        recordingAdapter.getInputDevices(),
+        recordingAdapter.getOutputDevices()
+      ]);
+
+      setDevices({ input: inputDev, output: outputDev });
+      console.log('Fetched audio devices:', { input: inputDev, output: outputDev });
     } catch (err) {
       console.error('Failed to fetch audio devices:', err);
       setError('Failed to load audio devices. Please check your system audio settings.');
@@ -69,17 +78,21 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     fetchDevices();
   }, []);
 
-  // Set up audio level event listener
+  // Set up audio level event listener (Tauri only)
   useEffect(() => {
+    if (!isTauri()) {
+      // Audio level monitoring not available in web
+      return;
+    }
+
     let unlisten: (() => void) | undefined;
 
     const setupAudioLevelListener = async () => {
       try {
-        unlisten = await listen<AudioLevelUpdate>('audio-levels', (event) => {
-          const levelUpdate = event.payload;
+        unlisten = await platformListen<AudioLevelUpdate>('audio-levels', (payload) => {
           const newLevels = new Map<string, AudioLevelData>();
 
-          levelUpdate.levels.forEach(level => {
+          payload.levels.forEach(level => {
             newLevels.set(level.device_name, level);
           });
 
@@ -170,8 +183,13 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     }).catch(err => console.error('Failed to track system audio selection:', err));
   };
 
-  // Start audio level monitoring
+  // Start audio level monitoring (Tauri only)
   const startAudioLevelMonitoring = async () => {
+    if (!isTauri()) {
+      setError('Audio level monitoring is only available in the desktop app');
+      return;
+    }
+
     try {
       // Only monitor input devices for now (microphones)
       const deviceNames = inputDevices.map(device => device.name);
@@ -180,6 +198,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
         return;
       }
 
+      const { invoke } = await import('@tauri-apps/api/core');
       await invoke('start_audio_level_monitoring', { deviceNames });
       setIsMonitoring(true);
       setShowLevels(true);
@@ -190,9 +209,12 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
     }
   };
 
-  // Stop audio level monitoring
+  // Stop audio level monitoring (Tauri only)
   const stopAudioLevelMonitoring = async () => {
+    if (!isTauri()) return;
+
     try {
+      const { invoke } = await import('@tauri-apps/api/core');
       await invoke('stop_audio_level_monitoring');
       setIsMonitoring(false);
       setAudioLevels(new Map());
@@ -228,19 +250,21 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-medium text-gray-900">Audio Devices</h4>
         <div className="flex items-center space-x-2">
-          {/* TODO: Monitoring */}
-          {/* <button */}
-          {/*   onClick={toggleAudioLevelMonitoring} */}
-          {/*   disabled={disabled || inputDevices.length === 0} */}
-          {/*   className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${ */}
-          {/*     isMonitoring */}
-          {/*       ? 'bg-red-100 text-red-700 hover:bg-red-200' */}
-          {/*       : 'bg-green-100 text-green-700 hover:bg-green-200' */}
-          {/*   } disabled:pointer-events-none disabled:opacity-50`} */}
-          {/*   title={inputDevices.length === 0 ? 'No microphones available to test' : ''} */}
-          {/* > */}
-          {/*   {isMonitoring ? 'Stop Test' : 'Test Mic'} */}
-          {/* </button> */}
+          {/* Test Mic button - only show in Tauri */}
+          {isTauri() && (
+            <button
+              onClick={toggleAudioLevelMonitoring}
+              disabled={disabled || inputDevices.length === 0}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                isMonitoring
+                  ? 'bg-red-100 text-red-700 hover:bg-red-200'
+                  : 'bg-green-100 text-green-700 hover:bg-green-200'
+              } disabled:pointer-events-none disabled:opacity-50`}
+              title={inputDevices.length === 0 ? 'No microphones available to test' : ''}
+            >
+              {isMonitoring ? 'Stop Test' : 'Test Mic'}
+            </button>
+          )}
           <button
             onClick={handleRefresh}
             disabled={refreshing || disabled}
@@ -283,8 +307,8 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
             <p className="text-xs text-gray-500">No microphone devices found</p>
           )}
 
-          {/* Audio Level Meters for Input Devices */}
-          {showLevels && inputDevices.length > 0 && (
+          {/* Audio Level Meters for Input Devices (Tauri only) */}
+          {isTauri() && showLevels && inputDevices.length > 0 && (
             <div className="space-y-2 pt-2 border-t border-gray-100">
               <p className="text-xs text-gray-600 font-medium">Microphone Levels:</p>
               {inputDevices.map((device) => {
@@ -345,7 +369,7 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
           )}
 
           {/* Backend Selection - only show when not recording */}
-          {!disabled && (
+          {!disabled && isTauri() && (
             <div className="pt-3 border-t border-gray-100">
               <AudioBackendSelector disabled={disabled} />
             </div>
@@ -357,11 +381,14 @@ export function DeviceSelection({ selectedDevices, onDeviceChange, disabled = fa
       <div className="text-xs text-gray-500 space-y-1">
         <p>• <strong>Microphone:</strong> Records your voice and ambient sound</p>
         <p>• <strong>System Audio:</strong> Records computer audio (music, calls, etc.)</p>
-        {isMonitoring && (
+        {isTauri() && isMonitoring && (
           <p>• <strong>Mic Levels:</strong> Green = good, Yellow = loud, Red = too loud</p>
         )}
-        {!isMonitoring && inputDevices.length > 0 && (
+        {isTauri() && !isMonitoring && inputDevices.length > 0 && (
           <p>• <strong>Tip:</strong> Click "Test Mic" to check if your microphone is working</p>
+        )}
+        {!isTauri() && (
+          <p>• <strong>Web Version:</strong> Mic testing available in desktop app only</p>
         )}
       </div>
     </div>
