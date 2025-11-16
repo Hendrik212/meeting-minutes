@@ -38,6 +38,7 @@ export interface UseSummaryManagerReturn {
   ) => Promise<void>;
   clearSummary: () => void;
   saveSummary: (meetingId: string) => Promise<void>;
+  setAiSummary: (summary: Summary | null) => void;
 }
 
 export function useSummaryManager(): UseSummaryManagerReturn {
@@ -248,6 +249,7 @@ export function useSummaryManager(): UseSummaryManagerReturn {
     generateSummary,
     regenerateSummary,
     clearSummary,
-    saveSummary
+    saveSummary,
+    setAiSummary
   };
 }
