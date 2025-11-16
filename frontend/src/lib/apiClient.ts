@@ -8,17 +8,11 @@
  * This allows gradual migration from Tauri to web without breaking existing code.
  */
 
+import { BACKEND_URL } from './config';
+
 // Detect if running in Tauri environment
 function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window;
-}
-
-// Get API base URL
-function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5167';
-  }
-  return 'http://localhost:5167';
 }
 
 /**
@@ -29,8 +23,9 @@ export class ApiClient {
   private isTauri: boolean;
 
   constructor() {
-    this.baseUrl = getApiBaseUrl();
+    this.baseUrl = BACKEND_URL;
     this.isTauri = isTauriEnvironment();
+    console.log('[ApiClient] Initialized with baseUrl:', this.baseUrl);
   }
 
   /**
