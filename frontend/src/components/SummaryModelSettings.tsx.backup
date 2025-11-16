@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { ModelConfig, ModelSettingsModal } from '@/components/ModelSettingsModal';
 
@@ -21,12 +21,12 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
   // Reusable fetch function
   const fetchModelConfig = useCallback(async () => {
     try {
-      const data = await platformInvoke('api_get_model_config') as any;
+      const data = await invoke('api_get_model_config') as any;
       if (data && data.provider !== null) {
         // Fetch API key if not included and provider requires it
         if (data.provider !== 'ollama' && !data.apiKey) {
           try {
-            const apiKeyData = await platformInvoke('api_get_api_key', {
+            const apiKeyData = await invoke('api_get_api_key', {
               provider: data.provider
             }) as string;
             data.apiKey = apiKeyData;
@@ -77,7 +77,7 @@ export function SummaryModelSettings({ refetchTrigger }: SummaryModelSettingsPro
   // Save handler
   const handleSaveModelConfig = async (config: ModelConfig) => {
     try {
-      await platformInvoke('api_save_model_config', {
+      await invoke('api_save_model_config', {
         provider: config.provider,
         model: config.model,
         whisperModel: config.whisperModel,

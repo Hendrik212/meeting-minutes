@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Switch } from '@/components/ui/switch';
 import { FolderOpen } from 'lucide-react';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
 import { DeviceSelection, SelectedDevices } from '@/components/DeviceSelection';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
@@ -33,24 +33,14 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   // Load recording preferences on component mount
   useEffect(() => {
     const loadPreferences = async () => {
-      if (!isTauri()) {
-        // Web: Use default preferences
-        setPreferences(prev => ({
-          ...prev,
-          save_folder: 'Browser Downloads'
-        }));
-        setLoading(false);
-        return;
-      }
-
       try {
-        const prefs = await platformInvoke<RecordingPreferences>('get_recording_preferences');
+        const prefs = await invoke<RecordingPreferences>('get_recording_preferences');
         setPreferences(prefs);
       } catch (error) {
         console.error('Failed to load recording preferences:', error);
         // If loading fails, get default folder path
         try {
-          const defaultPath = await platformInvoke<string>('get_default_recordings_folder_path');
+          const defaultPath = await invoke<string>('get_default_recordings_folder_path');
           setPreferences(prev => ({ ...prev, save_folder: defaultPath }));
         } catch (defaultError) {
           console.error('Failed to get default folder path:', defaultError);
@@ -66,17 +56,6 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   // Load recording notification preference
   useEffect(() => {
     const loadNotificationPref = async () => {
-      if (!isTauri()) {
-        // Web: Use localStorage
-        try {
-          const saved = localStorage.getItem('show_recording_notification');
-          setShowRecordingNotification(saved !== null ? saved === 'true' : true);
-        } catch (error) {
-          console.error('Failed to load notification preference:', error);
-        }
-        return;
-      }
-
       try {
         const { Store } = await import('@tauri-apps/plugin-store');
         const store = await Store.load('preferences.json');
@@ -118,34 +97,20 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   };
 
   const handleOpenFolder = async () => {
-    if (!isTauri()) {
-      toast.info('Folder opening is only available in the desktop app');
-      return;
-    }
-
     try {
-      await platformInvoke('open_recordings_folder');
+      await invoke('open_recordings_folder');
     } catch (error) {
       console.error('Failed to open recordings folder:', error);
-      toast.error('Failed to open recordings folder');
     }
   };
 
   const handleNotificationToggle = async (enabled: boolean) => {
     try {
       setShowRecordingNotification(enabled);
-
-      if (!isTauri()) {
-        // Web: Use localStorage
-        localStorage.setItem('show_recording_notification', enabled.toString());
-      } else {
-        // Tauri: Use Store
-        const { Store } = await import('@tauri-apps/plugin-store');
-        const store = await Store.load('preferences.json');
-        await store.set('show_recording_notification', enabled);
-        await store.save();
-      }
-
+      const { Store } = await import('@tauri-apps/plugin-store');
+      const store = await Store.load('preferences.json');
+      await store.set('show_recording_notification', enabled);
+      await store.save();
       toast.success('Preference saved');
       await Analytics.track('recording_notification_preference_changed', {
         enabled: enabled.toString()
@@ -159,13 +124,7 @@ export function RecordingSettings({ onSave }: RecordingSettingsProps) {
   const savePreferences = async (prefs: RecordingPreferences) => {
     setSaving(true);
     try {
-      if (isTauri()) {
-        await platformInvoke('set_recording_preferences', { preferences: prefs });
-      } else {
-        // Web: Store in localStorage
-        localStorage.setItem('recording_preferences', JSON.stringify(prefs));
-      }
-
+      await invoke('set_recording_preferences', { preferences: prefs });
       onSave?.(prefs);
 
       // Show success toast with device details
