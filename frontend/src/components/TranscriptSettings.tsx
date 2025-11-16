@@ -155,21 +155,81 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
 
                     {transcriptModelConfig.provider === 'localWhisper' && (
                         <div className="mt-6">
-                            <ModelManager
-                                selectedModel={selectedWhisperModel}
-                                onModelSelect={handleWhisperModelSelect}
-                                autoSave={true}
-                            />
+                            {isTauri() ? (
+                                <ModelManager
+                                    selectedModel={selectedWhisperModel}
+                                    onModelSelect={handleWhisperModelSelect}
+                                    autoSave={true}
+                                />
+                            ) : (
+                                <div className="space-y-3">
+                                    <Label className="block text-sm font-medium text-gray-700">
+                                        Backend Whisper Model
+                                    </Label>
+                                    <Select
+                                        value={selectedWhisperModel}
+                                        onValueChange={(value) => {
+                                            handleWhisperModelSelect(value);
+                                        }}
+                                    >
+                                        <SelectTrigger className='focus:ring-1 focus:ring-blue-500 focus:border-blue-500'>
+                                            <SelectValue placeholder="Select Whisper model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="tiny">Tiny (fastest, lowest accuracy)</SelectItem>
+                                            <SelectItem value="tiny.en">Tiny English</SelectItem>
+                                            <SelectItem value="base">Base (fast, good accuracy)</SelectItem>
+                                            <SelectItem value="base.en">Base English</SelectItem>
+                                            <SelectItem value="small">Small (balanced)</SelectItem>
+                                            <SelectItem value="small.en">Small English</SelectItem>
+                                            <SelectItem value="medium">Medium (slow, high accuracy)</SelectItem>
+                                            <SelectItem value="medium.en">Medium English</SelectItem>
+                                            <SelectItem value="large-v1">Large v1 (very slow, highest accuracy)</SelectItem>
+                                            <SelectItem value="large-v2">Large v2</SelectItem>
+                                            <SelectItem value="large-v3">Large v3 (recommended)</SelectItem>
+                                            <SelectItem value="large-v3-turbo">Large v3 Turbo (fast + accurate)</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-gray-600">
+                                        Model runs on backend server. Make sure the selected model is available on your backend.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
                     {transcriptModelConfig.provider === 'parakeet' && (
                         <div className="mt-6">
-                            <ParakeetModelManager
-                                selectedModel={selectedParakeetModel}
-                                onModelSelect={handleParakeetModelSelect}
-                                autoSave={true}
-                            />
+                            {isTauri() ? (
+                                <ParakeetModelManager
+                                    selectedModel={selectedParakeetModel}
+                                    onModelSelect={handleParakeetModelSelect}
+                                    autoSave={true}
+                                />
+                            ) : (
+                                <div className="space-y-3">
+                                    <Label className="block text-sm font-medium text-gray-700">
+                                        Backend Parakeet Model
+                                    </Label>
+                                    <Select
+                                        value={selectedParakeetModel}
+                                        onValueChange={(value) => {
+                                            handleParakeetModelSelect(value);
+                                        }}
+                                    >
+                                        <SelectTrigger className='focus:ring-1 focus:ring-blue-500 focus:border-blue-500'>
+                                            <SelectValue placeholder="Select Parakeet model" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="parakeet-tdt-0.6b-v3-int8">Parakeet TDT 0.6B v3 INT8 (recommended)</SelectItem>
+                                            <SelectItem value="parakeet-tdt-1.1b-v3-int8">Parakeet TDT 1.1B v3 INT8</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <p className="text-xs text-gray-600">
+                                        Model runs on backend server. Make sure the selected model is available on your backend.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
