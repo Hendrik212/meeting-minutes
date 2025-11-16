@@ -8,7 +8,7 @@
  * This allows gradual migration from Tauri to web without breaking existing code.
  */
 
-import { BACKEND_URL } from './config';
+import { getBackendUrl } from './config';
 
 // Detect if running in Tauri environment
 function isTauriEnvironment(): boolean {
@@ -23,7 +23,7 @@ export class ApiClient {
   private isTauri: boolean;
 
   constructor() {
-    this.baseUrl = BACKEND_URL;
+    this.baseUrl = getBackendUrl();
     this.isTauri = isTauriEnvironment();
     console.log('[ApiClient] Initialized with baseUrl:', this.baseUrl);
   }

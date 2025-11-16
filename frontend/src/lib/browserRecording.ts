@@ -5,7 +5,7 @@
  * Replaces Tauri-based recording for web deployments
  */
 
-import { BACKEND_URL } from './config';
+import { getBackendUrl } from './config';
 
 export interface RecordingOptions {
   mimeType?: string;
@@ -150,8 +150,10 @@ export async function stopRecording(audioStream: AudioStream): Promise<Blob> {
 export async function uploadAudio(
   audioBlob: Blob,
   meetingTitle: string,
-  apiUrl: string = BACKEND_URL
+  apiUrl?: string
 ): Promise<{ meeting_id: string; audio_path: string; message: string }> {
+  // Use provided URL or get backend URL dynamically
+  const backendUrl = apiUrl || getBackendUrl();
   try {
     const formData = new FormData();
 
@@ -164,7 +166,7 @@ export async function uploadAudio(
     formData.append('audio', audioFile);
     formData.append('meeting_title', meetingTitle);
 
-    const response = await fetch(`${apiUrl}/audio/upload`, {
+    const response = await fetch(`${backendUrl}/audio/upload`, {
       method: 'POST',
       body: formData
     });

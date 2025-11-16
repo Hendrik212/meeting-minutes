@@ -10,7 +10,7 @@ import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { LanguageSelection } from '@/components/LanguageSelection';
 import * as recordingAdapter from '@/lib/recordingAdapter';
-import { BACKEND_URL } from '@/lib/config';
+import { getBackendUrl } from '@/lib/config';
 
 type SettingsTab = 'general' | 'recording' | 'Transcriptionmodels' | 'summaryModels';
 
@@ -43,7 +43,7 @@ export default function SettingsPage() {
           config = await platformInvoke('api_get_transcript_config');
         } else {
           // Web: Call backend API directly
-          const response = await fetch(`${BACKEND_URL}/get-transcript-config`);
+          const response = await fetch(`${getBackendUrl()}/get-transcript-config`);
           if (response.ok) {
             config = await response.json();
           }
@@ -95,7 +95,7 @@ export default function SettingsPage() {
         });
       } else {
         // Web: Call backend API directly
-        const response = await fetch(`${BACKEND_URL}/save-transcript-config`, {
+        const response = await fetch(`${getBackendUrl()}/save-transcript-config`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
