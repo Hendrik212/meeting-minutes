@@ -292,58 +292,81 @@ export function getRecommendedModel(systemSpecs?: { ram: number; cores: number }
 }
 
 // Tauri command wrappers for whisper-rs backend
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from './platform';
 
 export class WhisperAPI {
   static async init(): Promise<void> {
-    await invoke('whisper_init');
+    if (!isTauri()) {
+      // Web: Whisper models not available
+      throw new Error('Whisper models are only available in the desktop app');
+    }
+    await platformInvoke('whisper_init');
   }
-  
+
   static async getAvailableModels(): Promise<ModelInfo[]> {
-    return await invoke('whisper_get_available_models');
+    if (!isTauri()) {
+      // Web: Return empty array, transcription uses backend API
+      return [];
+    }
+    return await platformInvoke('whisper_get_available_models');
   }
-  
+
   static async loadModel(modelName: string): Promise<void> {
-    await invoke('whisper_load_model', { modelName });
+    if (!isTauri()) return;
+    await platformInvoke('whisper_load_model', { modelName });
   }
-  
+
   static async getCurrentModel(): Promise<string | null> {
-    return await invoke('whisper_get_current_model');
+    if (!isTauri()) return null;
+    return await platformInvoke('whisper_get_current_model');
   }
-  
+
   static async isModelLoaded(): Promise<boolean> {
-    return await invoke('whisper_is_model_loaded');
+    if (!isTauri()) return false;
+    return await platformInvoke('whisper_is_model_loaded');
   }
-  
+
   static async transcribeAudio(audioData: number[]): Promise<string> {
-    return await invoke('whisper_transcribe_audio', { audioData });
+    if (!isTauri()) {
+      throw new Error('Audio transcription is only available in the desktop app');
+    }
+    return await platformInvoke('whisper_transcribe_audio', { audioData });
   }
-  
+
   static async getModelsDirectory(): Promise<string> {
-    return await invoke('whisper_get_models_directory');
+    if (!isTauri()) return '';
+    return await platformInvoke('whisper_get_models_directory');
   }
-  
+
   static async downloadModel(modelName: string): Promise<void> {
-    await invoke('whisper_download_model', { modelName });
+    if (!isTauri()) {
+      throw new Error('Model downloads are only available in the desktop app');
+    }
+    await platformInvoke('whisper_download_model', { modelName });
   }
-  
+
   static async cancelDownload(modelName: string): Promise<void> {
-    await invoke('whisper_cancel_download', { modelName });
+    if (!isTauri()) return;
+    await platformInvoke('whisper_cancel_download', { modelName });
   }
 
   static async deleteCorruptedModel(modelName: string): Promise<string> {
-    return await invoke('whisper_delete_corrupted_model', { modelName });
+    if (!isTauri()) return '';
+    return await platformInvoke('whisper_delete_corrupted_model', { modelName });
   }
 
   static async hasAvailableModels(): Promise<boolean> {
-    return await invoke('whisper_has_available_models');
+    if (!isTauri()) return false;
+    return await platformInvoke('whisper_has_available_models');
   }
 
   static async validateModelReady(): Promise<string> {
-    return await invoke('whisper_validate_model_ready');
+    if (!isTauri()) return '';
+    return await platformInvoke('whisper_validate_model_ready');
   }
 
   static async openModelsFolder(): Promise<void> {
-    await invoke('open_models_folder');
+    if (!isTauri()) return;
+    await platformInvoke('open_models_folder');
   }
 }
