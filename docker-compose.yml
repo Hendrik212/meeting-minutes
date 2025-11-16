@@ -13,7 +13,7 @@ services:
     container_name: meetily-frontend
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "3118:3000"
     environment:
       - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost/api}
@@ -47,7 +47,7 @@ services:
     environment:
       # Application Settings
       - ENVIRONMENT=production
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
 
       # Database
       - DATABASE_PATH=/data/db/meeting_minutes.db

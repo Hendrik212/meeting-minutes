@@ -61,9 +61,16 @@ RUN apt-get update && apt-get install -y \
     libsndfile1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Ensure Python 3.11 is default
-RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
-    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+# Ensure Python is properly configured
+RUN if [ -f /usr/bin/python3.11 ]; then \
+        update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1; \
+    elif [ -f /usr/bin/python3.12 ]; then \
+        update-alternatives --install /usr/bin/python python /usr/bin/python3.12 1 && \
+        update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.12 1; \
+    elif [ -f /usr/bin/python3 ]; then \
+        update-alternatives --install /usr/bin/python python /usr/bin/python3 1; \
+    fi
 
 # Upgrade pip
 RUN python -m pip install --upgrade pip setuptools wheel
@@ -138,8 +145,8 @@ RUN git clone https://github.com/ggerganov/whisper.cpp.git . && \
 FROM dependencies AS final
 
 # Copy whisper.cpp binaries
-COPY --from=whisper-builder /tmp/whisper/build/bin/server /usr/local/bin/whisper-server
-COPY --from=whisper-builder /tmp/whisper/build/bin/main /usr/local/bin/whisper-cli
+COPY --from=whisper-builder /tmp/whisper/build/bin/whisper-server /usr/local/bin/whisper-server
+COPY --from=whisper-builder /tmp/whisper/build/bin/whisper-cli /usr/local/bin/whisper-cli
 COPY --from=whisper-builder /tmp/whisper/models/download-ggml-model.sh /usr/local/bin/download-whisper-model
 
 # Make scripts executable
@@ -149,7 +156,7 @@ RUN chmod +x /usr/local/bin/whisper-server /usr/local/bin/whisper-cli /usr/local
 WORKDIR /app
 
 # Copy application code
-COPY app/ ./app/
+COPY app/ ./
 
 # Create necessary directories
 RUN mkdir -p \
@@ -219,7 +226,7 @@ done
 
 # Start FastAPI application
 echo "Starting FastAPI backend on port 5167..."
-exec python -m uvicorn app.main:app \
+exec python -m uvicorn main:app \
     --host 0.0.0.0 \
     --port 5167 \
     --workers ${MAX_WORKERS:-4} \
