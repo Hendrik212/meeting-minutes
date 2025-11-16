@@ -2,15 +2,29 @@
 
 This guide explains how to configure the frontend for different deployment scenarios.
 
-## Environment Variables
+## Automatic Detection (NEW!)
 
-### Required for Production/Reverse Proxy
+**The frontend now automatically detects the correct backend URL!**
+
+The backend provides a `/client-config` endpoint that uses **X-Forwarded-*** headers to detect if it's behind a reverse proxy. The frontend calls this endpoint on startup to automatically configure the correct URLs.
+
+**You no longer need to manually set environment variables in most cases!**
+
+The automatic detection works for:
+- ✅ Traefik reverse proxy (detects X-Forwarded-* headers)
+- ✅ nginx reverse proxy (detects X-Forwarded-* headers)
+- ✅ Local development (localhost)
+- ✅ Network access (IP addresses)
+
+## Environment Variables (Optional Override)
+
+### Optional for Production/Reverse Proxy
 
 #### `NEXT_PUBLIC_API_URL`
 
 **Backend API endpoint for HTTP requests.**
 
-**REQUIRED** when deploying behind Traefik, nginx, or any reverse proxy.
+**OPTIONAL** - only needed to override automatic detection.
 
 Examples:
 ```bash
@@ -28,7 +42,7 @@ NEXT_PUBLIC_API_URL=https://domain.com/backend
 
 **WebSocket endpoint for real-time transcript updates.**
 
-**REQUIRED** when deploying behind Traefik, nginx, or any reverse proxy.
+**OPTIONAL** - only needed to override automatic detection.
 
 Examples:
 ```bash
@@ -133,26 +147,46 @@ NEXT_PUBLIC_WS_URL=wss://app.domain.com:5167
 
 ## How Auto-Detection Works
 
-The frontend automatically detects the backend URL:
+The frontend automatically detects the backend URL using **X-Forwarded-*** headers:
 
 1. **Environment variable** (highest priority):
    - Uses `NEXT_PUBLIC_API_URL` if set
+   - Overrides all auto-detection
 
-2. **Domain detection** (reverse proxy assumption):
-   - If hostname is a domain (not `localhost` or IP)
-   - Assumes backend at `/api` path
-   - Example: `https://app.domain.com` → `https://app.domain.com/api`
+2. **Backend header detection** (automatic):
+   - Frontend calls `/client-config` endpoint on startup
+   - Backend checks for X-Forwarded-Proto, X-Forwarded-Host, X-Forwarded-For headers
+   - If headers present → backend is behind reverse proxy → uses `/api` path
+   - If headers absent → backend has direct access → uses `hostname:5167`
+   - Frontend caches the detected URLs
 
-3. **Local/IP detection** (direct access):
-   - If hostname is `localhost` or IP address
-   - Uses same host with port 5167
-   - Example: `http://192.168.1.100:3000` → `http://192.168.1.100:5167`
+3. **Fallback logic** (if detection fails):
+   - Domain (not localhost/IP) → assume reverse proxy → use `/api`
+   - Localhost or IP → assume direct access → use `hostname:5167`
+
+**Detection strategy:**
+```
+Frontend tries:
+  1. /client-config (relative path - works with reverse proxy)
+  2. http://hostname:5167/client-config (direct access)
+
+Backend responds with:
+  {
+    "api_url": "/api" or "http://hostname:5167",
+    "ws_url": "wss://host/api/ws" or "ws://hostname:5167",
+    "behind_proxy": true/false,
+    "detection_method": "x-forwarded-headers"
+  }
+```
 
 **Check the browser console** for detection logs:
 ```
-[Config] Using NEXT_PUBLIC_API_URL: https://app.domain.com/api
-[Config] Domain detected, using relative /api path
-[Config] Local/IP access detected, using: http://localhost:5167
+[Config] Trying auto-detection at: /client-config
+[Config] ✅ Auto-detection successful!
+[Config]   Backend URL: /api
+[Config]   WebSocket URL: wss://app.domain.com/api/ws
+[Config]   Behind proxy: true
+[Config]   Detection method: x-forwarded-headers
 ```
 
 ---
@@ -163,9 +197,13 @@ The frontend automatically detects the backend URL:
 
 **Symptom:** Browser shows "Failed to fetch" or "Network error"
 
-**Cause:** Missing environment variables with reverse proxy
+**Cause:** Auto-detection failed or backend not accessible
 
-**Solution:** Set `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL`
+**Solutions:**
+1. Check browser console for `[Config]` logs to see what was detected
+2. Verify backend is running and accessible
+3. If behind reverse proxy, verify X-Forwarded-* headers are being set
+4. Manually override with `NEXT_PUBLIC_API_URL` and `NEXT_PUBLIC_WS_URL` if needed
 
 ### WebSocket connection fails
 

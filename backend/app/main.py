@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
@@ -241,6 +241,92 @@ class SummaryProcessor:
 
 # Initialize processor
 processor = SummaryProcessor()
+
+# ====================================================================
+# Client Configuration (Auto-detection)
+# ====================================================================
+
+@app.get("/client-config")
+async def get_client_config(request: Request):
+    """
+    Detect backend URL configuration based on request headers.
+
+    This endpoint analyzes X-Forwarded-* headers to determine if the app
+    is behind a reverse proxy and returns appropriate URLs for the frontend.
+
+    Returns:
+        - api_url: Base URL for API requests
+        - ws_url: Base URL for WebSocket connections
+        - behind_proxy: Whether reverse proxy was detected
+    """
+    try:
+        # Check for reverse proxy headers
+        x_forwarded_proto = request.headers.get("x-forwarded-proto")
+        x_forwarded_host = request.headers.get("x-forwarded-host")
+        x_forwarded_for = request.headers.get("x-forwarded-for")
+
+        # Detect if behind reverse proxy
+        behind_proxy = bool(x_forwarded_proto or x_forwarded_host or x_forwarded_for)
+
+        if behind_proxy:
+            # Behind reverse proxy - construct URL from forwarded headers
+            protocol = x_forwarded_proto or "http"
+            host = x_forwarded_host or request.headers.get("host", "localhost")
+
+            # Use relative path for API (proxy routes /api to backend)
+            api_url = "/api"
+
+            # WebSocket URL uses same host with appropriate protocol
+            ws_protocol = "wss" if protocol == "https" else "ws"
+            ws_url = f"{ws_protocol}://{host}/api/ws"
+
+            logger.info(f"Detected reverse proxy - Proto: {protocol}, Host: {host}")
+            logger.info(f"  X-Forwarded-For: {x_forwarded_for}")
+            logger.info(f"  Returning API URL: {api_url}, WS URL: {ws_url}")
+
+            return {
+                "api_url": api_url,
+                "ws_url": ws_url,
+                "behind_proxy": True,
+                "detection_method": "x-forwarded-headers"
+            }
+        else:
+            # Direct access - use hostname from request with port
+            host = request.headers.get("host", "localhost:5167")
+
+            # Extract hostname without port
+            hostname = host.split(":")[0] if ":" in host else host
+
+            # Determine protocol
+            protocol = "https" if request.url.scheme == "https" else "http"
+            ws_protocol = "wss" if protocol == "https" else "ws"
+
+            # Construct URLs with port 5167
+            api_url = f"{protocol}://{hostname}:5167"
+            ws_url = f"{ws_protocol}://{hostname}:5167"
+
+            logger.info(f"Direct access detected - Host: {host}")
+            logger.info(f"  Returning API URL: {api_url}, WS URL: {ws_url}")
+
+            return {
+                "api_url": api_url,
+                "ws_url": ws_url,
+                "behind_proxy": False,
+                "detection_method": "direct-request-headers"
+            }
+    except Exception as e:
+        logger.error(f"Error detecting client config: {str(e)}", exc_info=True)
+        # Return safe defaults
+        return {
+            "api_url": "/api",
+            "ws_url": "ws://localhost:5167",
+            "behind_proxy": False,
+            "detection_method": "fallback-on-error"
+        }
+
+# ====================================================================
+# Meeting Management
+# ====================================================================
 
 # New meeting management endpoints
 @app.get("/get-meetings", response_model=List[MeetingResponse])
