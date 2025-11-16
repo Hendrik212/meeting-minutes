@@ -814,16 +814,21 @@ async def transcribe_uploaded_audio(meeting_id: str, audio_path: str, meeting_ti
         # Extract transcripts from Whisper response
         transcripts = []
         if "segments" in result:
-            for segment in result["segments"]:
+            for idx, segment in enumerate(result["segments"]):
                 transcript = {
                     "id": f"transcript-{int(segment['start'] * 1000)}",
                     "text": segment["text"].strip(),
                     "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(segment["start"])),
                     "audio_start_time": segment["start"],
                     "audio_end_time": segment["end"],
-                    "duration": segment["end"] - segment["start"]
+                    "duration": segment["end"] - segment["start"],
+                    "sequence_id": idx,
+                    "source": "whisper-server"
                 }
                 transcripts.append(transcript)
+
+                # Broadcast transcript in real-time to WebSocket clients
+                await broadcast_transcript_update(transcript, meeting_id)
 
         # Update meeting with transcripts
         if transcripts:
