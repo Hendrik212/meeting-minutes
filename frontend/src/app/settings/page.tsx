@@ -22,7 +22,8 @@ export default function SettingsPage() {
   const [transcriptModelConfig, setTranscriptModelConfig] = useState<TranscriptModelProps>({
     provider: 'localWhisper',
     model: 'large-v3',
-    apiKey: null
+    apiKey: null,
+    diarization: 0
   });
   const [selectedLanguage, setSelectedLanguage] = useState<string>('auto');
 
@@ -55,7 +56,8 @@ export default function SettingsPage() {
           setTranscriptModelConfig({
             provider: config.provider || 'localWhisper',
             model: config.model || 'large-v3',
-            apiKey: config.apiKey || null
+            apiKey: config.apiKey || null,
+            diarization: config.diarization || 0
           });
         }
       } catch (error) {
@@ -90,7 +92,8 @@ export default function SettingsPage() {
         await platformInvoke('api_save_transcript_config', {
           provider: config.provider,
           model: config.model,
-          apiKey: config.apiKey
+          apiKey: config.apiKey,
+          diarization: config.diarization || 0
         });
       } else {
         // Web: Call backend API directly
@@ -102,7 +105,8 @@ export default function SettingsPage() {
           body: JSON.stringify({
             provider: config.provider,
             model: config.model,
-            apiKey: config.apiKey
+            apiKey: config.apiKey,
+            diarization: config.diarization || 0
           })
         });
 
