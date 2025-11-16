@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
 import { isTauri } from '@/lib/platform';
 import { apiClient } from '@/lib/apiClient';
+import { getBackendUrl } from '@/lib/config';
 
 
 interface SidebarItem {
@@ -109,11 +110,10 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const fetchSettings = async () => {
-        
-        setServerAddress('http://localhost:5167');
+        // Use auto-detected backend URL from config
+        const backendUrl = getBackendUrl();
+        setServerAddress(backendUrl);
         setTranscriptServerAddress('http://127.0.0.1:8178/stream');
-        
-      
     };
     fetchSettings();
   }, []);
