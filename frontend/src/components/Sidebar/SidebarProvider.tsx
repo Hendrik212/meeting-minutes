@@ -3,7 +3,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 
 
 interface SidebarItem {
@@ -86,7 +87,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
   const fetchMeetings = React.useCallback(async () => {
     if (serverAddress) {
       try {
-        const meetings = await invoke('api_get_meetings') as Array<{id: string, title: string}>;
+        // Use apiClient for both Tauri and web environments
+        const meetings = await apiClient.getMeetings();
         const transformedMeetings = meetings.map((meeting: any) => ({
           id: meeting.id,
           title: meeting.title
@@ -169,8 +171,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsSearching(true);
 
-
-      const results = await invoke('api_search_transcripts', { query }) as TranscriptSearchResult[];
+      // Use apiClient for both Tauri and web environments
+      const results = await apiClient.searchTranscripts(query);
       setSearchResults(results);
     } catch (error) {
       console.error('Error searching transcripts:', error);
@@ -215,9 +217,8 @@ export function SidebarProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       try {
-        const result = await invoke('api_get_summary', {
-          meetingId: meetingId,
-        }) as any;
+        // Use apiClient for both Tauri and web environments
+        const result = await apiClient.getSummaryStatus(meetingId) as any;
 
         console.log(`📊 Polling update for ${meetingId}:`, result.status);
 
