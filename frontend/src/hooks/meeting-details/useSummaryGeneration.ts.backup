@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { Transcript, Summary } from '@/types';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { platformInvoke } from '@/lib/platform';
+import { invoke as invokeTauri } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -94,7 +94,7 @@ export function useSummaryGeneration({
       }
 
       // Process transcript and get process_id
-      const result = await platformInvoke('api_process_transcript', {
+      const result = await invokeTauri('api_process_transcript', {
         text: transcriptText,
         model: modelConfig.provider,
         modelName: modelConfig.model,
@@ -288,7 +288,7 @@ export function useSummaryGeneration({
     if (modelConfig.provider === 'ollama') {
       try {
         const endpoint = modelConfig.ollamaEndpoint || null;
-        const models = await platformInvoke('get_ollama_models', { endpoint }) as any[];
+        const models = await invokeTauri('get_ollama_models', { endpoint }) as any[];
 
         if (!models || models.length === 0) {
           toast.error(
