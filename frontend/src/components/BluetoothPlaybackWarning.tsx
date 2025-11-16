@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from '@/lib/platform';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Speaker, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -32,7 +32,7 @@ export function BluetoothPlaybackWarning({
 
     const checkAudioOutput = async () => {
       try {
-        const outputInfo = await invoke<AudioOutputInfo>('get_active_audio_output');
+        const outputInfo = await platformInvoke<AudioOutputInfo>('get_active_audio_output');
 
         if (outputInfo.is_bluetooth) {
           setIsBluetoothActive(true);

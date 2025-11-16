@@ -149,58 +149,79 @@ export function getRecommendedModel(systemSpecs?: { ram: number; cores: number }
 }
 
 // Tauri command wrappers for Parakeet backend
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from './platform';
 
 export class ParakeetAPI {
   static async init(): Promise<void> {
-    await invoke('parakeet_init');
+    if (!isTauri()) {
+      throw new Error('Parakeet models are only available in the desktop app');
+    }
+    await platformInvoke('parakeet_init');
   }
 
   static async getAvailableModels(): Promise<ParakeetModelInfo[]> {
-    return await invoke('parakeet_get_available_models');
+    if (!isTauri()) {
+      return [];
+    }
+    return await platformInvoke('parakeet_get_available_models');
   }
 
   static async loadModel(modelName: string): Promise<void> {
-    await invoke('parakeet_load_model', { modelName });
+    if (!isTauri()) return;
+    await platformInvoke('parakeet_load_model', { modelName });
   }
 
   static async getCurrentModel(): Promise<string | null> {
-    return await invoke('parakeet_get_current_model');
+    if (!isTauri()) return null;
+    return await platformInvoke('parakeet_get_current_model');
   }
 
   static async isModelLoaded(): Promise<boolean> {
-    return await invoke('parakeet_is_model_loaded');
+    if (!isTauri()) return false;
+    return await platformInvoke('parakeet_is_model_loaded');
   }
 
   static async transcribeAudio(audioData: number[]): Promise<string> {
-    return await invoke('parakeet_transcribe_audio', { audioData });
+    if (!isTauri()) {
+      throw new Error('Audio transcription is only available in the desktop app');
+    }
+    return await platformInvoke('parakeet_transcribe_audio', { audioData });
   }
 
   static async getModelsDirectory(): Promise<string> {
-    return await invoke('parakeet_get_models_directory');
+    if (!isTauri()) return '';
+    return await platformInvoke('parakeet_get_models_directory');
   }
 
   static async downloadModel(modelName: string): Promise<void> {
-    await invoke('parakeet_download_model', { modelName });
+    if (!isTauri()) {
+      throw new Error('Model downloads are only available in the desktop app');
+    }
+    await platformInvoke('parakeet_download_model', { modelName });
   }
 
   static async cancelDownload(modelName: string): Promise<void> {
-    await invoke('parakeet_cancel_download', { modelName });
+    if (!isTauri()) return;
+    await platformInvoke('parakeet_cancel_download', { modelName });
   }
 
   static async deleteCorruptedModel(modelName: string): Promise<string> {
-    return await invoke('parakeet_delete_corrupted_model', { modelName });
+    if (!isTauri()) return '';
+    return await platformInvoke('parakeet_delete_corrupted_model', { modelName });
   }
 
   static async hasAvailableModels(): Promise<boolean> {
-    return await invoke('parakeet_has_available_models');
+    if (!isTauri()) return false;
+    return await platformInvoke('parakeet_has_available_models');
   }
 
   static async validateModelReady(): Promise<string> {
-    return await invoke('parakeet_validate_model_ready');
+    if (!isTauri()) return '';
+    return await platformInvoke('parakeet_validate_model_ready');
   }
 
   static async openModelsFolder(): Promise<void> {
-    await invoke('open_parakeet_models_folder');
+    if (!isTauri()) return;
+    await platformInvoke('open_parakeet_models_folder');
   }
 }

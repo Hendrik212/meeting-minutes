@@ -5,7 +5,7 @@ import { Transcript, Summary } from "@/types";
 import PageContent from "./page-content";
 import { useRouter, useSearchParams } from "next/navigation";
 import Analytics from "@/lib/analytics";
-import { invoke } from "@tauri-apps/api/core";
+import { isTauri, platformInvoke } from "@/lib/platform";
 import { LoaderIcon } from "lucide-react";
 
 interface MeetingDetailsResponse {
@@ -31,7 +31,7 @@ function MeetingDetailsContent() {
   // Check if gemma3:1b model is available in Ollama
   const checkForGemmaModel = useCallback(async (): Promise<boolean> => {
     try {
-      const models = await invoke('get_ollama_models', { endpoint: null }) as any[];
+      const models = await platformInvoke('get_ollama_models', { endpoint: null }) as any[];
       const hasGemma = models.some((m: any) => m.name === 'gemma3:1b');
       console.log('🔍 Checked for gemma3:1b:', hasGemma);
       return hasGemma;
@@ -47,7 +47,7 @@ function MeetingDetailsContent() {
 
     try {
       // ✅ STEP 1: Check what's currently in database
-      const currentConfig = await invoke('api_get_model_config') as any;
+      const currentConfig = await platformInvoke('api_get_model_config') as any;
 
       // ✅ STEP 2: If DB already has a model, use it (never override!)
       if (currentConfig && currentConfig.model) {
@@ -63,7 +63,7 @@ function MeetingDetailsContent() {
       if (hasGemma) {
         console.log('💾 DB empty, using gemma3:1b as initial default');
 
-        await invoke('api_save_model_config', {
+        await platformInvoke('api_save_model_config', {
           provider: 'ollama',
           model: 'gemma3:1b',
           whisperModel: 'large-v3',
@@ -89,7 +89,7 @@ function MeetingDetailsContent() {
     }
 
     try {
-      const data = await invoke('api_get_meeting', {
+      const data = await platformInvoke('api_get_meeting', {
         meetingId: meetingId,
       }) as any;
       console.log('Meeting details:', data);
@@ -131,7 +131,7 @@ function MeetingDetailsContent() {
 
     const fetchMeetingSummary = async () => {
       try {
-        const summary = await invoke('api_get_summary', {
+        const summary = await platformInvoke('api_get_summary', {
           meetingId: meetingId,
         }) as any;
 

@@ -142,10 +142,10 @@ export function ModelManager({
       console.log('[ModelManager] Setting up event listeners...');
 
       // Download progress with throttling
-      unlistenProgress = await listen<{ modelName: string; progress: number }>(
+      unlistenProgress = await platformListen<{ modelName: string; progress: number }>(
         'model-download-progress',
-        (event) => {
-          const { modelName, progress } = event.payload;
+        (payload) => {
+          const { modelName, progress } = payload;
           const now = Date.now();
           const throttleData = progressThrottleRef.current.get(modelName);
 
@@ -170,10 +170,10 @@ export function ModelManager({
       );
 
       // Download complete
-      unlistenComplete = await listen<{ modelName: string }>(
+      unlistenComplete = await platformListen<{ modelName: string }>(
         'model-download-complete',
-        (event) => {
-          const { modelName } = event.payload;
+        (payload) => {
+          const { modelName } = payload;
           const model = models.find(m => m.name === modelName);
           const displayName = getDisplayName(modelName);
 
@@ -210,10 +210,10 @@ export function ModelManager({
       );
 
       // Download error
-      unlistenError = await listen<{ modelName: string; error: string }>(
+      unlistenError = await platformListen<{ modelName: string; error: string }>(
         'model-download-error',
-        (event) => {
-          const { modelName, error } = event.payload;
+        (payload) => {
+          const { modelName, error } = payload;
           const displayName = getDisplayName(modelName);
 
           setModels(prevModels =>
@@ -257,7 +257,7 @@ export function ModelManager({
 
   const saveModelSelection = async (modelName: string) => {
     try {
-      await invoke('api_save_transcript_config', {
+      await platformInvoke('api_save_transcript_config', {
         provider: 'localWhisper',
         model: modelName,
         apiKey: null
