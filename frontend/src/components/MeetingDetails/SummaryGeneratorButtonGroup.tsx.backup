@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Sparkles, Settings, Loader2, FileText, Check } from 'lucide-react';
 import Analytics from '@/lib/analytics';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
 import { toast } from 'sonner';
 import { useState } from 'react';
 
@@ -57,8 +57,8 @@ export function SummaryGeneratorButtonGroup({
   }
 
   const checkOllamaModelsAndGenerate = async () => {
-    // Only check for Ollama provider in Tauri
-    if (modelConfig.provider !== 'ollama' || !isTauri()) {
+    // Only check for Ollama provider
+    if (modelConfig.provider !== 'ollama') {
       onGenerateSummary(customPrompt);
       return;
     }
@@ -66,7 +66,7 @@ export function SummaryGeneratorButtonGroup({
     setIsCheckingModels(true);
     try {
       const endpoint = modelConfig.ollamaEndpoint || null;
-      const models = await platformInvoke<any[]>('get_ollama_models', { endpoint });
+      const models = await invoke('get_ollama_models', { endpoint }) as any[];
 
       if (!models || models.length === 0) {
         // No models available, show message and open settings

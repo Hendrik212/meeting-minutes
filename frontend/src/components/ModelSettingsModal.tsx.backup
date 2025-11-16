@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSidebar } from './Sidebar/SidebarProvider';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { invoke } from '@tauri-apps/api/core';
 import { Button } from '@/components/ui/button';
 import { useOllamaDownload } from '@/contexts/OllamaDownloadContext';
 import { Input } from '@/components/ui/input';
@@ -112,7 +112,7 @@ export function ModelSettingsModal({
 
   const fetchApiKey = async (provider: string) => {
     try {
-      const data = (await platformInvoke('api_get_api_key', {
+      const data = (await invoke('api_get_api_key', {
         provider,
       })) as string;
       setApiKey(data || '');
@@ -184,14 +184,14 @@ export function ModelSettingsModal({
       }
 
       try {
-        const data = (await platformInvoke('api_get_model_config')) as any;
+        const data = (await invoke('api_get_model_config')) as any;
         if (data && data.provider !== null) {
           setModelConfig(data);
 
           // Fetch API key if not included in response and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
             try {
-              const apiKeyData = await platformInvoke('api_get_api_key', {
+              const apiKeyData = await invoke('api_get_api_key', {
                 provider: data.provider
               }) as string;
               data.apiKey = apiKeyData;
@@ -221,7 +221,7 @@ export function ModelSettingsModal({
   useEffect(() => {
     const fetchAutoGenerateSetting = async () => {
       try {
-        const enabled = (await platformInvoke('api_get_auto_generate_setting')) as boolean;
+        const enabled = (await invoke('api_get_auto_generate_setting')) as boolean;
         setAutoGenerateEnabled(enabled);
         console.log('Auto-generate setting loaded:', enabled);
       } catch (err) {
@@ -296,7 +296,7 @@ export function ModelSettingsModal({
 
     try {
       const endpoint = trimmedEndpoint || null;
-      const modelList = (await platformInvoke('get_ollama_models', { endpoint })) as OllamaModel[];
+      const modelList = (await invoke('get_ollama_models', { endpoint })) as OllamaModel[];
       setModels(modelList);
       setLastFetchedEndpoint(trimmedEndpoint); // Track successful fetch
 
@@ -345,7 +345,7 @@ export function ModelSettingsModal({
     try {
       setIsLoadingOpenRouter(true);
       setOpenRouterError('');
-      const data = (await platformInvoke('get_openrouter_models')) as OpenRouterModel[];
+      const data = (await invoke('get_openrouter_models')) as OpenRouterModel[];
       setOpenRouterModels(data);
     } catch (err) {
       console.error('Error loading OpenRouter models:', err);
@@ -370,7 +370,7 @@ export function ModelSettingsModal({
 
     // Save auto-generate setting
     // try {
-    //   await platformInvoke('api_save_auto_generate_setting', { enabled: autoGenerateEnabled });
+    //   await invoke('api_save_auto_generate_setting', { enabled: autoGenerateEnabled });
     //   console.log('Auto-generate setting saved:', autoGenerateEnabled);
     // } catch (err) {
     //   console.error('Failed to save auto-generate setting:', err);
@@ -406,7 +406,7 @@ export function ModelSettingsModal({
       });
 
       // The download will be tracked by the global context via events
-      await platformInvoke('pull_ollama_model', {
+      await invoke('pull_ollama_model', {
         modelName: recommendedModel,
         endpoint
       });
@@ -427,7 +427,7 @@ export function ModelSettingsModal({
   const deleteOllamaModel = async (modelName: string) => {
     try {
       const endpoint = ollamaEndpoint.trim() || null;
-      await platformInvoke('delete_ollama_model', {
+      await invoke('delete_ollama_model', {
         modelName,
         endpoint
       });
