@@ -14,6 +14,7 @@ import { useModelConfiguration } from '@/hooks/meeting-details/useModelConfigura
 import { useTemplates } from '@/hooks/meeting-details/useTemplates';
 import { useCopyOperations } from '@/hooks/meeting-details/useCopyOperations';
 import { useMeetingOperations } from '@/hooks/meeting-details/useMeetingOperations';
+import { useSpeakerDiarization } from '@/hooks/meeting-details/useSpeakerDiarization';
 
 export default function PageContent({
   meeting,
@@ -70,6 +71,10 @@ export default function PageContent({
     meeting,
   });
 
+  const speakerDiarization = useSpeakerDiarization({
+    meetingId: meeting.id,
+  });
+
   // Track page view
   useEffect(() => {
     Analytics.trackPageView('meeting_details');
@@ -100,7 +105,7 @@ export default function PageContent({
       className="flex flex-col h-screen bg-gray-50"
     >
       <div className="flex flex-1 overflow-hidden">
-      
+
 
         <TranscriptPanel
           transcripts={meetingData.transcripts}
@@ -109,6 +114,13 @@ export default function PageContent({
           onCopyTranscript={copyOperations.handleCopyTranscript}
           onOpenMeetingFolder={meetingOperations.handleOpenMeetingFolder}
           isRecording={isRecording}
+          meetingId={meeting.id}
+          audioPath={speakerDiarization.audioPath}
+          diarizationStatus={speakerDiarization.diarizationStatus}
+          speakers={speakerDiarization.speakers}
+          onDiarizationComplete={speakerDiarization.handleDiarizationComplete}
+          onStatusChange={speakerDiarization.handleStatusChange}
+          onSpeakerUpdate={speakerDiarization.refreshSpeakers}
         />
 
           <SummaryPanel

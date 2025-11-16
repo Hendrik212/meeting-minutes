@@ -1,8 +1,11 @@
 "use client";
 
+import { useState } from 'react';
 import { Transcript } from '@/types';
 import { TranscriptView } from '@/components/TranscriptView';
 import { TranscriptButtonGroup } from './TranscriptButtonGroup';
+import { SpeakerList, DiarizationButton } from '@/components/Diarization';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 
 interface TranscriptPanelProps {
   transcripts: Transcript[];
@@ -11,6 +14,14 @@ interface TranscriptPanelProps {
   onCopyTranscript: () => void;
   onOpenMeetingFolder: () => Promise<void>;
   isRecording: boolean;
+  // Speaker diarization props
+  meetingId: string;
+  audioPath: string;
+  diarizationStatus: string;
+  speakers: any[];
+  onDiarizationComplete?: () => void;
+  onStatusChange?: (status: string) => void;
+  onSpeakerUpdate?: () => void;
 }
 
 export function TranscriptPanel({
@@ -19,8 +30,19 @@ export function TranscriptPanel({
   onPromptChange,
   onCopyTranscript,
   onOpenMeetingFolder,
-  isRecording
+  isRecording,
+  meetingId,
+  audioPath,
+  diarizationStatus,
+  speakers,
+  onDiarizationComplete,
+  onStatusChange,
+  onSpeakerUpdate,
 }: TranscriptPanelProps) {
+  const [isSpeakerSectionExpanded, setIsSpeakerSectionExpanded] = useState(true);
+
+  const showSpeakers = diarizationStatus === 'completed' || diarizationStatus === 'processing' || speakers.length > 0;
+
   return (
     <div className="hidden md:flex md:w-1/4 lg:w-1/3 min-w-0 border-r border-gray-200 bg-white flex-col relative shrink-0">
       {/* Title area */}
@@ -31,6 +53,41 @@ export function TranscriptPanel({
           onOpenMeetingFolder={onOpenMeetingFolder}
         />
       </div>
+
+      {/* Speaker Diarization Section */}
+      {!isRecording && transcripts.length > 0 && (
+        <div className="border-b border-gray-200 bg-gray-50">
+          <div
+            className="p-4 cursor-pointer flex items-center justify-between hover:bg-gray-100 transition-colors"
+            onClick={() => setIsSpeakerSectionExpanded(!isSpeakerSectionExpanded)}
+          >
+            <h3 className="font-semibold text-sm text-gray-700">Speaker Identification</h3>
+            {isSpeakerSectionExpanded ? (
+              <ChevronDown className="h-4 w-4 text-gray-500" />
+            ) : (
+              <ChevronRight className="h-4 w-4 text-gray-500" />
+            )}
+          </div>
+
+          {isSpeakerSectionExpanded && (
+            <div className="px-4 pb-4 space-y-3">
+              <DiarizationButton
+                meetingId={meetingId}
+                audioPath={audioPath}
+                onComplete={onDiarizationComplete}
+                onStatusChange={onStatusChange}
+              />
+
+              {showSpeakers && (
+                <SpeakerList
+                  meetingId={meetingId}
+                  onSpeakerUpdate={onSpeakerUpdate}
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Transcript content */}
       <div className="flex-1 overflow-y-auto pb-4">
