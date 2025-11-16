@@ -71,10 +71,10 @@ export const useAudioPlayer = (audioPath: string | null) => {
       }
 
       console.log('Loading audio from:', audioPath);
-      
+
       // Read the file using Tauri command
-      const result = await invoke<number[]>('read_audio_file', { 
-        filePath: audioPath 
+      const result = await platformInvoke<number[]>('read_audio_file', {
+        filePath: audioPath
       });
       
       if (!result || result.length === 0) {

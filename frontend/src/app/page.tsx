@@ -576,10 +576,7 @@ export default function Home() {
               {/* Preference Settings */}
               <div>
                 <h3 className="text-lg font-semibold mb-4">Preferences</h3>
-                <PreferenceSettings
-                  showConfidenceIndicator={showConfidenceIndicator}
-                  onConfidenceIndicatorChange={handleConfidenceToggle}
-                />
+                <PreferenceSettings />
               </div>
             </div>
           </div>

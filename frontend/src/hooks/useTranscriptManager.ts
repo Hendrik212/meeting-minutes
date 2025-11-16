@@ -120,7 +120,7 @@ export function useTranscriptManager(
           console.log('Received transcript update:', payload);
 
           const newTranscript: Transcript = {
-            id: payload.id || `transcript-${Date.now()}`,
+            id: `transcript-${Date.now()}-${payload.sequence_id}`,
             text: payload.text,
             timestamp: payload.timestamp || new Date().toISOString(),
             audio_start_time: payload.audio_start_time,
@@ -153,7 +153,7 @@ export function useTranscriptManager(
           console.log('Received transcript via WebSocket:', payload);
 
           const newTranscript: Transcript = {
-            id: payload.id || `transcript-${Date.now()}`,
+            id: `transcript-${Date.now()}-${payload.sequence_id}`,
             text: payload.text,
             timestamp: payload.timestamp || new Date().toISOString(),
             audio_start_time: payload.audio_start_time,

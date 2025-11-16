@@ -151,12 +151,8 @@ export function useRecordingManager(): UseRecordingManagerReturn {
       // Save preferences
       await savePreferences();
 
-      // Analytics
-      Analytics.trackRecordingStarted(
-        meetingTitle,
-        selectedDevices.micDevice,
-        selectedDevices.systemDevice
-      );
+      // Analytics - use meetingTitle as temporary ID (meeting not created yet)
+      Analytics.trackRecordingStarted(meetingTitle);
 
       toast.success('Recording started');
     } catch (error) {
@@ -180,8 +176,8 @@ export function useRecordingManager(): UseRecordingManagerReturn {
 
       setIsRecording(false);
 
-      // Analytics
-      Analytics.trackRecordingStopped();
+      // Analytics - pass empty string as meetingId (meeting created later)
+      Analytics.trackRecordingStopped('', undefined);
 
       toast.success('Recording stopped');
       return audioPath;
