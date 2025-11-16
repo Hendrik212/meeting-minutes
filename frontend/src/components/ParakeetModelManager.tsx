@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformListen, platformInvoke } from '@/lib/platform';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
@@ -94,10 +93,10 @@ export function ParakeetModelManager({
       console.log('[ParakeetModelManager] Setting up event listeners...');
 
       // Download progress with throttling
-      unlistenProgress = await listen<{ modelName: string; progress: number }>(
+      unlistenProgress = await platformListen<{ modelName: string; progress: number }>(
         'parakeet-model-download-progress',
-        (event) => {
-          const { modelName, progress } = event.payload;
+        (payload) => {
+          const { modelName, progress } = payload;
           const now = Date.now();
           const throttleData = progressThrottleRef.current.get(modelName);
 
@@ -122,10 +121,10 @@ export function ParakeetModelManager({
       );
 
       // Download complete
-      unlistenComplete = await listen<{ modelName: string }>(
+      unlistenComplete = await platformListen<{ modelName: string }>(
         'parakeet-model-download-complete',
-        (event) => {
-          const { modelName } = event.payload;
+        (payload) => {
+          const { modelName } = payload;
           const displayInfo = getModelDisplayInfo(modelName);
           const displayName = displayInfo?.friendlyName || modelName;
 
@@ -162,10 +161,10 @@ export function ParakeetModelManager({
       );
 
       // Download error
-      unlistenError = await listen<{ modelName: string; error: string }>(
+      unlistenError = await platformListen<{ modelName: string; error: string }>(
         'parakeet-model-download-error',
-        (event) => {
-          const { modelName, error } = event.payload;
+        (payload) => {
+          const { modelName, error } = payload;
           const displayInfo = getModelDisplayInfo(modelName);
           const displayName = displayInfo?.friendlyName || modelName;
 
@@ -210,7 +209,7 @@ export function ParakeetModelManager({
 
   const saveModelSelection = async (modelName: string) => {
     try {
-      await invoke('api_save_transcript_config', {
+      await platformInvoke('api_save_transcript_config', {
         provider: 'parakeet',
         model: modelName,
         apiKey: null

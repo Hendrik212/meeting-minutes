@@ -2,7 +2,7 @@
 
 import React, { useEffect, ReactNode, useRef, useState, createContext } from 'react';
 import Analytics from '@/lib/analytics';
-import { load } from '@tauri-apps/plugin-store';
+import { isTauri } from '@/lib/platform';
 
 
 interface AnalyticsProviderProps {
@@ -30,6 +30,17 @@ export default function AnalyticsProvider({ children }: AnalyticsProviderProps) 
     }
 
     const initAnalytics = async () => {
+      if (!isTauri()) {
+        // Web: Use localStorage instead of plugin-store
+        const analyticsOptedIn = localStorage.getItem('analyticsOptedIn') !== 'false';
+        setIsAnalyticsOptedIn(analyticsOptedIn);
+        if (analyticsOptedIn) {
+          initAnalytics2();
+        }
+        return;
+      }
+
+      const { load } = await import('@tauri-apps/plugin-store');
       const store = await load('analytics.json', {
         autoSave: false,
         defaults: {
@@ -62,23 +73,30 @@ export default function AnalyticsProvider({ children }: AnalyticsProviderProps) 
         // Get device info for initialization
         const deviceInfo = await Analytics.getDeviceInfo();
 
-        // Store platform info in analytics.json for quick access
-        const store = await load('analytics.json', {
-          autoSave: false,
-          defaults: {
-            analyticsOptedIn: true
+        // Store platform info (Tauri only)
+        if (isTauri()) {
+          const { load } = await import('@tauri-apps/plugin-store');
+          const store = await load('analytics.json', {
+            autoSave: false,
+            defaults: {
+              analyticsOptedIn: true
+            }
+          });
+          await store.set('platform', deviceInfo.platform);
+          await store.set('os_version', deviceInfo.os_version);
+          await store.set('architecture', deviceInfo.architecture);
+
+          // Set first launch date if not exists
+          if (!(await store.has('first_launch_date'))) {
+            await store.set('first_launch_date', new Date().toISOString());
           }
-        });
-        await store.set('platform', deviceInfo.platform);
-        await store.set('os_version', deviceInfo.os_version);
-        await store.set('architecture', deviceInfo.architecture);
-
-        // Set first launch date if not exists
-        if (!(await store.has('first_launch_date'))) {
-          await store.set('first_launch_date', new Date().toISOString());
+          await store.save();
+        } else {
+          // Web: Use localStorage
+          if (!localStorage.getItem('first_launch_date')) {
+            localStorage.setItem('first_launch_date', new Date().toISOString());
+          }
         }
-
-        await store.save();
 
         // Identify user with enhanced properties immediately after init
         await Analytics.identify(userId, {

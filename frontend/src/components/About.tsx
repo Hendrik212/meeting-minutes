@@ -1,5 +1,5 @@
 import React from "react";
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from '@/lib/platform';
 import Image from 'next/image';
 import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch";
 
@@ -7,7 +7,7 @@ import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch";
 export function About() {
     const handleContactClick = async () => {
         try {
-            await invoke('open_external_url', { url: 'https://meetily.zackriya.com/#about' });
+            await platformInvoke('open_external_url', { url: 'https://meetily.zackriya.com/#about' });
         } catch (error) {
             console.error('Failed to open link:', error);
         }

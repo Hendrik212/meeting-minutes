@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import { isTauri, platformInvoke } from '@/lib/platform';
 import { Info } from 'lucide-react';
 
 export interface BackendInfo {
@@ -33,12 +33,12 @@ export function AudioBackendSelector({
         setError(null);
 
         // Get backend info (includes name and description)
-        const backendInfo = await invoke<BackendInfo[]>('get_audio_backend_info');
+        const backendInfo = await platformInvoke<BackendInfo[]>('get_audio_backend_info');
         setBackends(backendInfo);
 
         // Get current backend if not provided via props
         if (!propBackend) {
-          const current = await invoke<string>('get_current_audio_backend');
+          const current = await platformInvoke<string>('get_current_audio_backend');
           setCurrentBackend(current);
         } else {
           setCurrentBackend(propBackend);
@@ -58,7 +58,7 @@ export function AudioBackendSelector({
   const handleBackendChange = async (backendId: string) => {
     try {
       setError(null);
-      await invoke('set_audio_backend', { backend: backendId });
+      await platformInvoke('set_audio_backend', { backend: backendId });
       setCurrentBackend(backendId);
 
       // Notify parent component
