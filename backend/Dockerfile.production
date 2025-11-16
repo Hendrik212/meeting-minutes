@@ -11,7 +11,7 @@ ARG CUDA_VERSION=12.1.0
 # ====================================================================
 # Stage 1: Base Image Selection (AMD ROCm)
 # ====================================================================
-FROM rocm/pytorch:rocm${ROCM_VERSION}_ubuntu22.04 AS base-rocm
+FROM rocm/pytorch:latest AS base-rocm
 ENV GPU_TYPE=rocm
 ENV PYTORCH_ROCM_ARCH=gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100
 RUN apt-get update && apt-get install -y \

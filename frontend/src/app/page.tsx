@@ -350,8 +350,7 @@ export default function Home() {
         if (result.meetingId) {
           setCurrentMeeting({
             id: result.meetingId,
-            title: meetingTitle,
-            transcripts: transcript.transcripts
+            title: meetingTitle
           });
         }
       }
@@ -437,11 +436,11 @@ export default function Home() {
         <div className="bg-white border-b border-gray-200 px-6 py-4">
           <div className="flex items-center justify-between">
             <EditableTitle
-              value={meetingTitle}
+              title={meetingTitle}
               onChange={setMeetingTitle}
               isEditing={isEditingTitle}
-              onEditingChange={setIsEditingTitle}
-              disabled={effectiveIsRecording}
+              onStartEditing={() => setIsEditingTitle(true)}
+              onFinishEditing={() => setIsEditingTitle(false)}
             />
 
             <div className="flex items-center gap-2">
@@ -472,7 +471,7 @@ export default function Home() {
           <PermissionWarning
             hasMicrophone={hasMicrophone}
             hasSystemAudio={hasSystemAudio}
-            onCheckPermissions={checkPermissions}
+            onRecheck={checkPermissions}
           />
         )}
 
@@ -491,7 +490,6 @@ export default function Home() {
               ) : (
                 <TranscriptView
                   transcripts={transcript.transcripts}
-                  showConfidenceIndicator={showConfidenceIndicator}
                 />
               )}
             </div>
@@ -503,7 +501,7 @@ export default function Home() {
                 onStartRecording={handleRecordingStart}
                 onStopRecording={handleRecordingStop}
                 selectedDevices={recording.selectedDevices}
-                onDeviceChange={recording.updateSelectedDevices}
+                onDeviceChange={recording.setSelectedDevices}
                 disabled={false}
               />
             </div>
