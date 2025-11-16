@@ -10,9 +10,7 @@ import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { LanguageSelection } from '@/components/LanguageSelection';
 import * as recordingAdapter from '@/lib/recordingAdapter';
-
-// Backend API URL - must be full URL for web browser
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5167';
+import { BACKEND_URL } from '@/lib/config';
 
 type SettingsTab = 'general' | 'recording' | 'Transcriptionmodels' | 'summaryModels';
 

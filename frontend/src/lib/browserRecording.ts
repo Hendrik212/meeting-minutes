@@ -5,6 +5,8 @@
  * Replaces Tauri-based recording for web deployments
  */
 
+import { BACKEND_URL } from './config';
+
 export interface RecordingOptions {
   mimeType?: string;
   audioBitsPerSecond?: number;
@@ -148,7 +150,7 @@ export async function stopRecording(audioStream: AudioStream): Promise<Blob> {
 export async function uploadAudio(
   audioBlob: Blob,
   meetingTitle: string,
-  apiUrl: string = '/api'
+  apiUrl: string = BACKEND_URL
 ): Promise<{ meeting_id: string; audio_path: string; message: string }> {
   try {
     const formData = new FormData();
