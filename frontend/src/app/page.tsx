@@ -7,12 +7,8 @@ import { EditableTitle } from '@/components/EditableTitle';
 import { TranscriptView } from '@/components/TranscriptView';
 import { RecordingControls } from '@/components/RecordingControls';
 import { AISummary } from '@/components/AISummary';
-import { DeviceSelection } from '@/components/DeviceSelection';
 import { useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { TranscriptSettings, TranscriptModelProps } from '@/components/TranscriptSettings';
-import { LanguageSelection } from '@/components/LanguageSelection';
 import { PermissionWarning } from '@/components/PermissionWarning';
-import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { usePermissionCheck } from '@/hooks/usePermissionCheck';
 import { useRecordingState } from '@/contexts/RecordingStateContext';
 import { useNavigation } from '@/hooks/useNavigation';
@@ -20,7 +16,7 @@ import { useRouter } from 'next/navigation';
 import Analytics from '@/lib/analytics';
 import { showRecordingNotification } from '@/lib/recordingNotification';
 import { Button } from '@/components/ui/button';
-import { Copy, Settings } from 'lucide-react';
+import { Copy } from 'lucide-react';
 import { toast } from 'sonner';
 
 // Import custom hooks
@@ -69,17 +65,7 @@ export default function Home() {
   const [meetingTitle, setMeetingTitle] = useState('+ New Call');
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
-  const [transcriptModelConfig, setTranscriptModelConfig] = useState<TranscriptModelProps>({
-    provider: 'parakeet',
-    model: 'parakeet-tdt-0.6b-v3-int8',
-    apiKey: null
-  });
   const [models, setModels] = useState<OllamaModel[]>([]);
-  const [showModelSettings, setShowModelSettings] = useState(false);
-  const [showDeviceSettings, setShowDeviceSettings] = useState(false);
-  const [showModelSelector, setShowModelSelector] = useState(false);
-  const [modelSelectorMessage, setModelSelectorMessage] = useState('');
-  const [showLanguageSettings, setShowLanguageSettings] = useState(false);
   const [showConfidenceIndicator, setShowConfidenceIndicator] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       const saved = localStorage.getItem('showConfidenceIndicator');
@@ -379,24 +365,6 @@ export default function Home() {
     }
   }, [transcript.transcripts]);
 
-  // Handle transcript configuration save
-  const handleSaveTranscriptConfig = async (config: TranscriptModelProps) => {
-    if (!isTauri()) return; // Only available in Tauri
-
-    try {
-      console.log('Saving transcript config:', config);
-      await platformInvoke('api_save_transcript_config', {
-        provider: config.provider,
-        model: config.model,
-        apiKey: config.apiKey
-      });
-      console.log('Successfully saved transcript config');
-    } catch (error) {
-      console.error('Failed to save transcript config:', error);
-      toast.error('Failed to save transcript configuration');
-    }
-  };
-
   // Handle confidence indicator toggle
   const handleConfidenceToggle = (checked: boolean) => {
     setShowConfidenceIndicator(checked);
@@ -452,15 +420,6 @@ export default function Home() {
               >
                 <Copy className="h-4 w-4 mr-2" />
                 Copy Transcript
-              </Button>
-
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowDeviceSettings(true)}
-              >
-                <Settings className="h-4 w-4 mr-2" />
-                Settings
               </Button>
             </div>
           </div>
@@ -525,63 +484,6 @@ export default function Home() {
         </div>
       </div>
 
-      {/* Settings Modals */}
-      {showDeviceSettings && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold">Settings</h2>
-              <button
-                onClick={() => setShowDeviceSettings(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-6">
-              {/* Device Selection */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Audio Devices</h3>
-                <DeviceSelection
-                  selectedDevices={recording.selectedDevices}
-                  onDeviceChange={recording.setSelectedDevices}
-                  disabled={effectiveIsRecording}
-                />
-              </div>
-
-              {/* Language Selection */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Language</h3>
-                <LanguageSelection
-                  selectedLanguage={recording.selectedLanguage}
-                  onLanguageChange={recording.setSelectedLanguage}
-                  disabled={effectiveIsRecording}
-                  provider={transcriptModelConfig.provider}
-                />
-              </div>
-
-              {/* Transcript Settings */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Transcript Model</h3>
-                <TranscriptSettings
-                  transcriptModelConfig={transcriptModelConfig}
-                  setTranscriptModelConfig={setTranscriptModelConfig}
-                  onModelSelect={() => {
-                    // Optional: handle model selection completion
-                  }}
-                />
-              </div>
-
-              {/* Preference Settings */}
-              <div>
-                <h3 className="text-lg font-semibold mb-4">Preferences</h3>
-                <PreferenceSettings />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

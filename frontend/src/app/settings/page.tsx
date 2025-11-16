@@ -8,6 +8,8 @@ import { TranscriptSettings, TranscriptModelProps } from '@/components/Transcrip
 import { RecordingSettings } from '@/components/RecordingSettings';
 import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
+import { LanguageSelection } from '@/components/LanguageSelection';
+import * as recordingAdapter from '@/lib/recordingAdapter';
 
 type SettingsTab = 'general' | 'recording' | 'Transcriptionmodels' | 'summaryModels';
 
@@ -19,6 +21,7 @@ export default function SettingsPage() {
     model: 'large-v3',
     apiKey: null
   });
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('auto');
 
   const tabs = [
     { id: 'general' as const, label: 'General', icon: <Settings2 className="w-4 h-4" /> },
@@ -57,6 +60,21 @@ export default function SettingsPage() {
       }
     };
     loadTranscriptConfig();
+  }, []);
+
+  // Load saved language preference on mount
+  useEffect(() => {
+    const loadLanguagePreference = async () => {
+      try {
+        const language = await recordingAdapter.getLanguagePreference();
+        setSelectedLanguage(language);
+        console.log('Loaded saved language preference:', language);
+      } catch (error) {
+        console.error('Failed to load language preference:', error);
+        setSelectedLanguage('auto'); // Default to auto-detect
+      }
+    };
+    loadLanguagePreference();
   }, []);
 
   // Handle configuration save
@@ -140,11 +158,25 @@ export default function SettingsPage() {
               {activeTab === 'general' && <PreferenceSettings />}
               {activeTab === 'recording' && <RecordingSettings />}
               {activeTab === 'Transcriptionmodels' && (
-                <TranscriptSettings
-                  transcriptModelConfig={transcriptModelConfig}
-                  setTranscriptModelConfig={setTranscriptModelConfig}
-                  // onSave={handleSaveConfig}
-                />
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-lg font-semibold mb-4">Transcription Language</h3>
+                    <LanguageSelection
+                      selectedLanguage={selectedLanguage}
+                      onLanguageChange={setSelectedLanguage}
+                      provider={transcriptModelConfig.provider}
+                    />
+                  </div>
+
+                  <div className="border-t pt-6">
+                    <h3 className="text-lg font-semibold mb-4">Transcription Model</h3>
+                    <TranscriptSettings
+                      transcriptModelConfig={transcriptModelConfig}
+                      setTranscriptModelConfig={setTranscriptModelConfig}
+                      // onSave={handleSaveConfig}
+                    />
+                  </div>
+                </div>
               )}
               {activeTab === 'summaryModels' && <SummaryModelSettings />}
             </div>
