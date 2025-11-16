@@ -31,7 +31,19 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadTranscriptConfig = async () => {
       try {
-        const config = await platformInvoke('api_get_transcript_config') as any;
+        let config: any;
+
+        if (isTauri()) {
+          // Desktop: Use Tauri command (proxies to backend)
+          config = await platformInvoke('api_get_transcript_config');
+        } else {
+          // Web: Call backend API directly
+          const response = await fetch('/api/get-transcript-config');
+          if (response.ok) {
+            config = await response.json();
+          }
+        }
+
         if (config) {
           console.log('Loaded saved transcript config:', config);
           setTranscriptModelConfig({
@@ -51,11 +63,33 @@ export default function SettingsPage() {
   const handleSaveConfig = async (config: TranscriptModelProps) => {
     try {
       console.log('[SettingsPage] Saving transcript config:', config);
-      await platformInvoke('api_save_transcript_config', {
-        provider: config.provider,
-        model: config.model,
-        apiKey: config.apiKey
-      });
+
+      if (isTauri()) {
+        // Desktop: Use Tauri command (proxies to backend)
+        await platformInvoke('api_save_transcript_config', {
+          provider: config.provider,
+          model: config.model,
+          apiKey: config.apiKey
+        });
+      } else {
+        // Web: Call backend API directly
+        const response = await fetch('/api/save-transcript-config', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            provider: config.provider,
+            model: config.model,
+            apiKey: config.apiKey
+          })
+        });
+
+        if (!response.ok) {
+          throw new Error('Failed to save transcript config');
+        }
+      }
+
       console.log('[SettingsPage] ✅ Successfully saved transcript config');
     } catch (error) {
       console.error('[SettingsPage] ❌ Failed to save transcript config:', error);
