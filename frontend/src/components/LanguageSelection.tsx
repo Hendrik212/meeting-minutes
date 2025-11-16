@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { invoke } from '@tauri-apps/api/core';
+import React, { useState } from 'react';
 import { Globe } from 'lucide-react';
 import Analytics from '@/lib/analytics';
 import { toast } from 'sonner';
+import * as recordingAdapter from '@/lib/recordingAdapter';
 
 export interface Language {
   code: string;
@@ -138,8 +138,8 @@ export function LanguageSelection({
   const handleLanguageChange = async (languageCode: string) => {
     setSaving(true);
     try {
-      // Save language preference to backend
-      await invoke('set_language_preference', { language: languageCode });
+      // Save language preference using recording adapter (works in both Tauri and web)
+      await recordingAdapter.saveLanguagePreference(languageCode);
       onLanguageChange(languageCode);
       console.log('Language preference saved:', languageCode);
 
