@@ -1,6 +1,6 @@
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from fastapi import FastAPI, HTTPException, BackgroundTasks, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from pydantic import BaseModel
 import uvicorn
 from typing import Optional, List
@@ -11,6 +11,10 @@ import json
 from threading import Lock
 from transcript_processor import TranscriptProcessor
 import time
+import os
+import shutil
+from pathlib import Path
+import httpx
 
 # Load environment variables
 load_dotenv()
@@ -629,6 +633,214 @@ async def search_transcripts(request: SearchRequest):
     except Exception as e:
         logger.error(f"Error searching transcripts: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
+
+# ====================================================================
+# Audio Upload & Web Recording Endpoints
+# ====================================================================
+
+class AudioUploadResponse(BaseModel):
+    meeting_id: str
+    audio_path: str
+    message: str
+
+@app.post("/audio/upload", response_model=AudioUploadResponse)
+async def upload_audio(
+    background_tasks: BackgroundTasks,
+    audio: UploadFile = File(...),
+    meeting_title: str = Form(...),
+    meeting_id: Optional[str] = Form(None)
+):
+    """
+    Upload audio file from web browser recording
+
+    This endpoint handles audio files uploaded from the browser-based recording feature.
+    It saves the audio file and triggers transcription in the background.
+
+    Args:
+        audio: Audio file (WAV, MP3, M4A, WEBM, OGG)
+        meeting_title: Title/name for the meeting
+        meeting_id: Optional existing meeting ID (creates new if not provided)
+
+    Returns:
+        Meeting ID and audio path
+    """
+    try:
+        # Generate meeting ID if not provided
+        if not meeting_id:
+            meeting_id = f"meeting-{int(time.time() * 1000)}"
+
+        # Create meeting directory
+        meetings_base = os.getenv("MEETINGS_PATH", "/data/meetings")
+        meeting_dir = Path(meetings_base) / meeting_id
+        meeting_dir.mkdir(parents=True, exist_ok=True)
+
+        # Determine file extension
+        file_extension = Path(audio.filename).suffix if audio.filename else ".wav"
+        audio_filename = f"recording{file_extension}"
+        audio_path = meeting_dir / audio_filename
+
+        # Save uploaded file
+        logger.info(f"Saving uploaded audio to {audio_path}")
+        with open(audio_path, "wb") as buffer:
+            shutil.copyfileobj(audio.file, buffer)
+
+        logger.info(f"Audio file saved successfully: {audio_path} ({os.path.getsize(audio_path)} bytes)")
+
+        # Create meeting in database
+        await db.save_meeting(
+            meeting_id=meeting_id,
+            meeting_title=meeting_title,
+            transcripts=[],
+            folder_path=str(meeting_dir)
+        )
+
+        # Trigger transcription in background
+        background_tasks.add_task(
+            transcribe_uploaded_audio,
+            meeting_id=meeting_id,
+            audio_path=str(audio_path),
+            meeting_title=meeting_title
+        )
+
+        return AudioUploadResponse(
+            meeting_id=meeting_id,
+            audio_path=str(audio_path),
+            message="Audio uploaded successfully. Transcription started."
+        )
+
+    except Exception as e:
+        logger.error(f"Error uploading audio: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to upload audio: {str(e)}")
+
+async def transcribe_uploaded_audio(meeting_id: str, audio_path: str, meeting_title: str):
+    """
+    Background task to transcribe uploaded audio using Whisper server
+
+    Args:
+        meeting_id: Meeting identifier
+        audio_path: Path to audio file
+        meeting_title: Meeting title
+    """
+    try:
+        logger.info(f"Starting transcription for meeting {meeting_id}")
+
+        # Get Whisper server URL
+        whisper_url = os.getenv("WHISPER_SERVER_URL", "http://localhost:8178")
+
+        # Send audio to Whisper server for transcription
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            with open(audio_path, "rb") as audio_file:
+                files = {"file": audio_file}
+                data = {"response_format": "verbose_json"}
+
+                logger.info(f"Sending audio to Whisper server: {whisper_url}/inference")
+                response = await client.post(
+                    f"{whisper_url}/inference",
+                    files=files,
+                    data=data
+                )
+                response.raise_for_status()
+                result = response.json()
+
+        # Extract transcripts from Whisper response
+        transcripts = []
+        if "segments" in result:
+            for segment in result["segments"]:
+                transcript = {
+                    "id": f"transcript-{int(segment['start'] * 1000)}",
+                    "text": segment["text"].strip(),
+                    "timestamp": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(segment["start"])),
+                    "audio_start_time": segment["start"],
+                    "audio_end_time": segment["end"],
+                    "duration": segment["end"] - segment["start"]
+                }
+                transcripts.append(transcript)
+
+        # Update meeting with transcripts
+        if transcripts:
+            logger.info(f"Saving {len(transcripts)} transcripts for meeting {meeting_id}")
+
+            # Get existing meeting
+            existing_meeting = await db.get_meeting(meeting_id)
+            if existing_meeting:
+                # Append new transcripts to existing ones
+                existing_transcripts = existing_meeting.get("transcripts", [])
+                all_transcripts = existing_transcripts + transcripts
+            else:
+                all_transcripts = transcripts
+
+            # Save updated meeting
+            await db.save_meeting(
+                meeting_id=meeting_id,
+                meeting_title=meeting_title,
+                transcripts=all_transcripts,
+                folder_path=str(Path(audio_path).parent)
+            )
+
+            logger.info(f"Transcription completed successfully for meeting {meeting_id}")
+        else:
+            logger.warning(f"No transcripts generated for meeting {meeting_id}")
+
+    except Exception as e:
+        logger.error(f"Error transcribing audio for meeting {meeting_id}: {str(e)}", exc_info=True)
+
+@app.get("/audio/download/{meeting_id}")
+async def download_audio(meeting_id: str):
+    """
+    Download audio file for a meeting
+
+    Args:
+        meeting_id: Meeting identifier
+
+    Returns:
+        Audio file
+    """
+    try:
+        # Get meeting to find audio path
+        meeting = await db.get_meeting(meeting_id)
+        if not meeting:
+            raise HTTPException(status_code=404, detail="Meeting not found")
+
+        # Find audio file in meeting folder
+        folder_path = meeting.get("folder_path")
+        if not folder_path:
+            raise HTTPException(status_code=404, detail="Meeting folder not found")
+
+        meeting_dir = Path(folder_path)
+
+        # Look for audio files with common extensions
+        audio_extensions = [".wav", ".mp3", ".m4a", ".webm", ".ogg", ".flac"]
+        audio_file = None
+
+        for ext in audio_extensions:
+            potential_file = meeting_dir / f"recording{ext}"
+            if potential_file.exists():
+                audio_file = potential_file
+                break
+
+        if not audio_file:
+            raise HTTPException(status_code=404, detail="Audio file not found")
+
+        return FileResponse(
+            path=str(audio_file),
+            media_type="audio/wav",
+            filename=f"{meeting.get('title', meeting_id)}.wav"
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error downloading audio: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/health")
+async def health_check():
+    """Health check endpoint for Docker and monitoring"""
+    return {
+        "status": "healthy",
+        "service": "meetily-backend",
+        "timestamp": time.time()
+    }
 
 @app.on_event("shutdown")
 async def shutdown_event():

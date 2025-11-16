@@ -1,0 +1,170 @@
+version: '3.8'
+
+services:
+  # ============================================
+  # Frontend - Next.js Web Application
+  # ============================================
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+    container_name: meetily-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL:-http://localhost/api}
+    depends_on:
+      - backend
+    labels:
+      # Traefik configuration
+      - "traefik.enable=true"
+      - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)"
+      - "traefik.http.routers.frontend.entrypoints=websecure"
+      - "traefik.http.routers.frontend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+    networks:
+      - meetily-network
+
+  # ============================================
+  # Backend - FastAPI + Whisper + Diarization
+  # ============================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.production
+      args:
+        ENABLE_GPU: ${ENABLE_GPU:-true}
+        GPU_TYPE: ${GPU_TYPE:-rocm}  # rocm, cuda, or cpu
+    container_name: meetily-backend
+    restart: unless-stopped
+    ports:
+      - "5167:5167"
+      - "8178:8178"  # Whisper server
+    environment:
+      # Application Settings
+      - ENVIRONMENT=production
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+
+      # Database
+      - DATABASE_PATH=/data/db/meeting_minutes.db
+
+      # LLM Configuration
+      - DEFAULT_PROVIDER=${DEFAULT_PROVIDER:-openai}
+      - DEFAULT_MODEL=${DEFAULT_MODEL:-gpt-4o}
+      - DEFAULT_WHISPER_MODEL=${DEFAULT_WHISPER_MODEL:-base}
+
+      # API Keys
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OPENAI_BASE_URL=${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - GROQ_API_KEY=${GROQ_API_KEY:-}
+
+      # Diarization (PyAnnote)
+      - HUGGINGFACE_TOKEN=${HUGGINGFACE_TOKEN}
+      - ENABLE_DIARIZATION=${ENABLE_DIARIZATION:-true}
+
+      # GPU Configuration
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-}
+      - HSA_OVERRIDE_GFX_VERSION=${HSA_OVERRIDE_GFX_VERSION:-}  # AMD GPU version override if needed
+      - ROCM_VERSION=${ROCM_VERSION:-6.0}
+
+      # Performance
+      - MAX_WORKERS=${MAX_WORKERS:-4}
+      - MAX_UPLOAD_SIZE=${MAX_UPLOAD_SIZE:-1073741824}  # 1GB in bytes
+      - TRANSCRIPTION_THREADS=${TRANSCRIPTION_THREADS:-4}
+
+      # Whisper Server
+      - WHISPER_SERVER_URL=http://localhost:8178
+      - WHISPER_MODEL_PATH=/data/models
+    volumes:
+      # Persistent data
+      - meetings-data:/data/meetings      # Audio recordings & transcripts
+      - db-data:/data/db                  # SQLite database
+      - models-data:/data/models          # Whisper & diarization models
+      - config-data:/data/config          # Application configuration
+
+      # Optional: Mount local models to avoid re-downloading
+      # - ./models:/data/models:ro
+    labels:
+      # Traefik configuration
+      - "traefik.enable=true"
+      - "traefik.http.routers.backend.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
+      - "traefik.http.services.backend.loadbalancer.server.port=5167"
+      - "traefik.http.middlewares.backend-stripprefix.stripprefix.prefixes=/api"
+      - "traefik.http.routers.backend.middlewares=backend-stripprefix"
+    networks:
+      - meetily-network
+    # AMD GPU Support via ROCm
+    devices:
+      - /dev/kfd:/dev/kfd
+      - /dev/dri:/dev/dri
+    group_add:
+      - video
+      - render
+    # Uncomment for NVIDIA GPU support instead of AMD
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+
+  # ============================================
+  # Traefik Reverse Proxy (Optional)
+  # ============================================
+  # Uncomment this section if you want to use the built-in Traefik
+  # Otherwise, use your existing Traefik instance with the labels above
+
+  # traefik:
+  #   image: traefik:v2.10
+  #   container_name: meetily-traefik
+  #   restart: unless-stopped
+  #   command:
+  #     - "--api.insecure=true"
+  #     - "--providers.docker=true"
+  #     - "--providers.docker.exposedbydefault=false"
+  #     - "--entrypoints.web.address=:80"
+  #     - "--entrypoints.websecure.address=:443"
+  #     - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+  #     - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+  #     - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+  #     # Uncomment for staging during testing
+  #     # - "--certificatesresolvers.letsencrypt.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #     - "8080:8080"  # Traefik dashboard
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock:ro
+  #     - traefik-letsencrypt:/letsencrypt
+  #   networks:
+  #     - meetily-network
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  meetings-data:
+    driver: local
+  db-data:
+    driver: local
+  models-data:
+    driver: local
+  config-data:
+    driver: local
+  # traefik-letsencrypt:
+  #   driver: local
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  meetily-network:
+    driver: bridge
