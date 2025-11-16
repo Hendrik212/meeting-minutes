@@ -4,6 +4,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Input } from './ui/input';
 import { Button } from './ui/button';
 import { Label } from './ui/label';
+import { Switch } from './ui/switch';
 import { Eye, EyeOff, Lock, Unlock } from 'lucide-react';
 import { ModelManager } from './WhisperModelManager';
 import { ParakeetModelManager } from './ParakeetModelManager';
@@ -13,6 +14,7 @@ export interface TranscriptModelProps {
     provider: 'localWhisper' | 'parakeet' | 'deepgram' | 'elevenLabs' | 'groq' | 'openai';
     model: string;
     apiKey?: string | null;
+    diarization?: number;
 }
 
 export interface TranscriptSettingsProps {
@@ -233,6 +235,37 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
                         </div>
                     )}
 
+                    {/* Diarization Toggle - Only for Whisper */}
+                    {transcriptModelConfig.provider === 'localWhisper' && (
+                        <div className="mt-6 p-4 border rounded-lg bg-gray-50">
+                            <div className="flex items-center justify-between">
+                                <div className="flex-1">
+                                    <Label className="text-sm font-medium text-gray-900">
+                                        Speaker Diarization
+                                    </Label>
+                                    <p className="text-xs text-gray-600 mt-1">
+                                        Automatically identify and label different speakers in the transcription. Requires stereo audio input.
+                                    </p>
+                                </div>
+                                <Switch
+                                    checked={transcriptModelConfig.diarization === 1}
+                                    onCheckedChange={(checked) => {
+                                        setTranscriptModelConfig({
+                                            ...transcriptModelConfig,
+                                            diarization: checked ? 1 : 0
+                                        });
+                                    }}
+                                />
+                            </div>
+                            {transcriptModelConfig.diarization === 1 && (
+                                <div className="mt-3 p-2 bg-blue-50 border border-blue-200 rounded text-blue-800">
+                                    <p className="text-xs">
+                                        <strong>Note:</strong> Diarization works best with stereo audio where each speaker is on a separate channel. Mono audio will not produce accurate speaker separation.
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {requiresApiKey && (
                         <div>

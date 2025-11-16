@@ -169,6 +169,7 @@ class SaveTranscriptConfigRequest(BaseModel):
     provider: str
     model: str
     apiKey: Optional[str] = None
+    diarization: Optional[int] = 0
 
 class TranscriptRequest(BaseModel):
     """Request model for transcript text, updated with meeting_id"""
@@ -651,7 +652,7 @@ async def get_transcript_config():
 @app.post("/save-transcript-config")
 async def save_transcript_config(request: SaveTranscriptConfigRequest):
     """Save the transcript configuration"""
-    await db.save_transcript_config(request.provider, request.model)
+    await db.save_transcript_config(request.provider, request.model, request.diarization or 0)
     if request.apiKey != None:
         await db.save_transcript_api_key(request.apiKey, request.provider)
     return {"status": "success", "message": "Transcript configuration saved successfully"}
