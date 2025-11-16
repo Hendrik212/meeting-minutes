@@ -48,10 +48,10 @@ export function OllamaDownloadProvider({ children }: { children: React.ReactNode
     const setupListeners = async () => {
       try {
         // Download progress
-        const unlistenProgress = await listen<{ modelName: string; progress: number }>(
+        const unlistenProgress = await platformListen<{ modelName: string; progress: number }>(
           'ollama-model-download-progress',
-          (event) => {
-            const { modelName, progress } = event.payload;
+          (payload) => {
+            const { modelName, progress } = payload;
             console.log(`🔵 [OllamaDownloadContext] Progress for ${modelName}: ${progress}%`);
 
             setDownloadProgress(prev => {
@@ -72,10 +72,10 @@ export function OllamaDownloadProvider({ children }: { children: React.ReactNode
         unsubscribers.push(unlistenProgress);
 
         // Download complete
-        const unlistenComplete = await listen<{ modelName: string }>(
+        const unlistenComplete = await platformListen<{ modelName: string }>(
           'ollama-model-download-complete',
-          (event) => {
-            const { modelName } = event.payload;
+          (payload) => {
+            const { modelName } = payload;
             console.log(`✅ [OllamaDownloadContext] Download complete for ${modelName}`);
 
             toast.success(`Model ${modelName} downloaded!`, {
@@ -100,10 +100,10 @@ export function OllamaDownloadProvider({ children }: { children: React.ReactNode
         unsubscribers.push(unlistenComplete);
 
         // Download error
-        const unlistenError = await listen<{ modelName: string; error: string }>(
+        const unlistenError = await platformListen<{ modelName: string; error: string }>(
           'ollama-model-download-error',
-          (event) => {
-            const { modelName, error } = event.payload;
+          (payload) => {
+            const { modelName, error } = payload;
             console.error(`❌ [OllamaDownloadContext] Download error for ${modelName}:`, error);
 
             toast.error(`Download failed: ${modelName}`, {

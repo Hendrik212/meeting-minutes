@@ -164,7 +164,7 @@ export function useSummaryManager(): UseSummaryManagerReturn {
       console.log('📊 Summary generation started, process ID:', result.process_id);
 
       // Track analytics
-      Analytics.trackSummaryGenerated(meetingId, provider, model);
+      Analytics.trackSummaryGenerationStarted(provider, model, transcriptText.length);
 
       // Start polling for status
       await pollSummaryStatus(meetingId, (summary) => {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Switch } from "./ui/switch"
 import { FolderOpen } from "lucide-react"
-import { invoke } from "@tauri-apps/api/core"
+import { isTauri, platformInvoke } from "@/lib/platform"
 import Analytics from "@/lib/analytics"
 import AnalyticsConsentSwitch from "./AnalyticsConsentSwitch"
 
@@ -44,11 +44,19 @@ export function PreferenceSettings() {
 
   useEffect(() => {
     const loadPreferences = async () => {
+      // Skip if not in Tauri environment
+      if (!isTauri()) {
+        setLoading(false);
+        setIsInitialLoad(false);
+        setNotificationsEnabled(true);
+        return;
+      }
+
       try {
         // Load notification settings from backend
         let settings: NotificationSettings | null = null;
         try {
-          settings = await invoke<NotificationSettings>('get_notification_settings');
+          settings = await platformInvoke<NotificationSettings>('get_notification_settings');
           setNotificationSettings(settings);
           // Notification enabled means both started and stopped notifications are enabled
           setNotificationsEnabled(
@@ -63,9 +71,9 @@ export function PreferenceSettings() {
 
         // Load storage locations
         const [dbDir, modelsDir, recordingsDir] = await Promise.all([
-          invoke<string>('get_database_directory'),
-          invoke<string>('whisper_get_models_directory'),
-          invoke<string>('get_default_recordings_folder_path')
+          platformInvoke<string>('get_database_directory'),
+          platformInvoke<string>('whisper_get_models_directory'),
+          platformInvoke<string>('get_default_recordings_folder_path')
         ]);
 
         setStorageLocations({
@@ -93,6 +101,7 @@ export function PreferenceSettings() {
     // Skip update on initial load or if value hasn't actually changed
     if (isInitialLoad || notificationsEnabled === null || notificationsEnabled === previousNotificationsEnabled) return;
     if (!notificationSettings) return;
+    if (!isTauri()) return; // Skip in web environment
 
     const updateNotificationSettings = async () => {
       console.log("Updating notification settings to:", notificationsEnabled);
@@ -109,7 +118,7 @@ export function PreferenceSettings() {
         };
 
         console.log("Calling set_notification_settings with:", updatedSettings);
-        await invoke('set_notification_settings', { settings: updatedSettings });
+        await platformInvoke('set_notification_settings', { settings: updatedSettings });
         setNotificationSettings(updatedSettings);
         setPreviousNotificationsEnabled(notificationsEnabled);
         console.log("Successfully updated notification settings to:", notificationsEnabled);
@@ -127,16 +136,21 @@ export function PreferenceSettings() {
   }, [notificationsEnabled])
 
   const handleOpenFolder = async (folderType: 'database' | 'models' | 'recordings') => {
+    if (!isTauri()) {
+      console.log('Folder opening only available in desktop app');
+      return;
+    }
+
     try {
       switch (folderType) {
         case 'database':
-          await invoke('open_database_folder');
+          await platformInvoke('open_database_folder');
           break;
         case 'models':
-          await invoke('open_models_folder');
+          await platformInvoke('open_models_folder');
           break;
         case 'recordings':
-          await invoke('open_recordings_folder');
+          await platformInvoke('open_recordings_folder');
           break;
       }
 
