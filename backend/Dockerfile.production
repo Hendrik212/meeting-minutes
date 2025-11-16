@@ -1,0 +1,245 @@
+# ====================================================================
+# Multi-stage Dockerfile for Meetily Backend
+# Supports: AMD ROCm, NVIDIA CUDA, and CPU-only builds
+# ====================================================================
+
+ARG ENABLE_GPU=true
+ARG GPU_TYPE=rocm
+ARG ROCM_VERSION=6.0
+ARG CUDA_VERSION=12.1.0
+
+# ====================================================================
+# Stage 1: Base Image Selection (AMD ROCm)
+# ====================================================================
+FROM rocm/pytorch:rocm${ROCM_VERSION}_ubuntu22.04 AS base-rocm
+ENV GPU_TYPE=rocm
+ENV PYTORCH_ROCM_ARCH=gfx900;gfx906;gfx908;gfx90a;gfx1030;gfx1100
+RUN apt-get update && apt-get install -y \
+    rocm-dev \
+    rocm-libs \
+    hip-runtime-amd \
+    && rm -rf /var/lib/apt/lists/*
+
+# ====================================================================
+# Stage 1: Base Image Selection (NVIDIA CUDA)
+# ====================================================================
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn8-devel-ubuntu22.04 AS base-cuda
+ENV GPU_TYPE=cuda
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ====================================================================
+# Stage 1: Base Image Selection (CPU Only)
+# ====================================================================
+FROM ubuntu:22.04 AS base-cpu
+ENV GPU_TYPE=cpu
+RUN apt-get update && apt-get install -y \
+    python3.11 \
+    python3.11-dev \
+    python3-pip \
+    && rm -rf /var/lib/apt/lists/*
+
+# ====================================================================
+# Stage 2: Select appropriate base
+# ====================================================================
+FROM base-${GPU_TYPE} AS base
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    cmake \
+    git \
+    wget \
+    curl \
+    ffmpeg \
+    libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure Python 3.11 is default
+RUN update-alternatives --install /usr/bin/python python /usr/bin/python3.11 1 && \
+    update-alternatives --install /usr/bin/python3 python3 /usr/bin/python3.11 1
+
+# Upgrade pip
+RUN python -m pip install --upgrade pip setuptools wheel
+
+# ====================================================================
+# Stage 3: Python Dependencies
+# ====================================================================
+FROM base AS dependencies
+
+# Copy requirements
+COPY requirements.txt .
+
+# Install Python packages
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install PyTorch with appropriate backend
+ARG GPU_TYPE
+RUN if [ "$GPU_TYPE" = "rocm" ]; then \
+        pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/rocm6.0; \
+    elif [ "$GPU_TYPE" = "cuda" ]; then \
+        pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121; \
+    else \
+        pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu; \
+    fi
+
+# Install diarization dependencies
+RUN pip install --no-cache-dir \
+    pyannote.audio \
+    pyannote.core \
+    pyannote.database \
+    pyannote.metrics \
+    pyannote.pipeline
+
+# Install additional audio processing libraries
+RUN pip install --no-cache-dir \
+    librosa \
+    soundfile \
+    pydub \
+    webrtcvad
+
+# ====================================================================
+# Stage 4: Whisper.cpp Build
+# ====================================================================
+FROM dependencies AS whisper-builder
+
+# Clone and build whisper.cpp with appropriate GPU support
+ARG GPU_TYPE
+WORKDIR /tmp/whisper
+
+RUN git clone https://github.com/ggerganov/whisper.cpp.git . && \
+    if [ "$GPU_TYPE" = "rocm" ]; then \
+        cmake -B build \
+            -DGGML_HIPBLAS=ON \
+            -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang \
+            -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/clang++ \
+            -DCMAKE_BUILD_TYPE=Release && \
+        cmake --build build --config Release; \
+    elif [ "$GPU_TYPE" = "cuda" ]; then \
+        cmake -B build \
+            -DGGML_CUDA=ON \
+            -DCMAKE_BUILD_TYPE=Release && \
+        cmake --build build --config Release; \
+    else \
+        cmake -B build \
+            -DCMAKE_BUILD_TYPE=Release && \
+        cmake --build build --config Release; \
+    fi
+
+# ====================================================================
+# Stage 5: Final Application Image
+# ====================================================================
+FROM dependencies AS final
+
+# Copy whisper.cpp binaries
+COPY --from=whisper-builder /tmp/whisper/build/bin/server /usr/local/bin/whisper-server
+COPY --from=whisper-builder /tmp/whisper/build/bin/main /usr/local/bin/whisper-cli
+COPY --from=whisper-builder /tmp/whisper/models/download-ggml-model.sh /usr/local/bin/download-whisper-model
+
+# Make scripts executable
+RUN chmod +x /usr/local/bin/whisper-server /usr/local/bin/whisper-cli /usr/local/bin/download-whisper-model
+
+# Set up application
+WORKDIR /app
+
+# Copy application code
+COPY app/ ./app/
+
+# Create necessary directories
+RUN mkdir -p \
+    /data/meetings \
+    /data/db \
+    /data/models \
+    /data/config \
+    /app/logs
+
+# Create startup script
+RUN cat > /app/start.sh << 'EOF'
+#!/bin/bash
+set -e
+
+echo "======================================"
+echo "Meetily Backend Starting..."
+echo "GPU Type: ${GPU_TYPE:-cpu}"
+echo "======================================"
+
+# Check GPU availability
+if [ "$GPU_TYPE" = "rocm" ]; then
+    echo "Checking AMD ROCm GPUs..."
+    rocm-smi || echo "Warning: rocm-smi not available"
+elif [ "$GPU_TYPE" = "cuda" ]; then
+    echo "Checking NVIDIA GPUs..."
+    nvidia-smi || echo "Warning: nvidia-smi not available"
+fi
+
+# Download default Whisper model if not exists
+WHISPER_MODEL=${DEFAULT_WHISPER_MODEL:-base}
+MODEL_FILE="/data/models/ggml-${WHISPER_MODEL}.bin"
+
+if [ ! -f "$MODEL_FILE" ]; then
+    echo "Downloading Whisper model: $WHISPER_MODEL"
+    download-whisper-model $WHISPER_MODEL /data/models
+else
+    echo "Whisper model already exists: $MODEL_FILE"
+fi
+
+# Download diarization models if enabled
+if [ "$ENABLE_DIARIZATION" = "true" ] && [ -n "$HUGGINGFACE_TOKEN" ]; then
+    echo "Diarization enabled, models will be downloaded on first use"
+    export HF_TOKEN=$HUGGINGFACE_TOKEN
+fi
+
+# Start Whisper server in background
+echo "Starting Whisper server on port 8178..."
+whisper-server \
+    --model "$MODEL_FILE" \
+    --host 0.0.0.0 \
+    --port 8178 \
+    --threads ${TRANSCRIPTION_THREADS:-4} \
+    > /app/logs/whisper-server.log 2>&1 &
+
+WHISPER_PID=$!
+echo "Whisper server started (PID: $WHISPER_PID)"
+
+# Wait for Whisper server to be ready
+echo "Waiting for Whisper server to be ready..."
+for i in {1..30}; do
+    if curl -s http://localhost:8178 > /dev/null 2>&1; then
+        echo "Whisper server is ready!"
+        break
+    fi
+    sleep 1
+done
+
+# Start FastAPI application
+echo "Starting FastAPI backend on port 5167..."
+exec python -m uvicorn app.main:app \
+    --host 0.0.0.0 \
+    --port 5167 \
+    --workers ${MAX_WORKERS:-4} \
+    --log-level ${LOG_LEVEL:-info}
+EOF
+
+RUN chmod +x /app/start.sh
+
+# Expose ports
+EXPOSE 5167 8178
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=120s --retries=3 \
+    CMD curl -f http://localhost:5167/docs || exit 1
+
+# Set environment defaults
+ENV PYTHONUNBUFFERED=1
+ENV ENVIRONMENT=production
+ENV DATABASE_PATH=/data/db/meeting_minutes.db
+ENV WHISPER_SERVER_URL=http://localhost:8178
+
+# Run application
+CMD ["/app/start.sh"]
