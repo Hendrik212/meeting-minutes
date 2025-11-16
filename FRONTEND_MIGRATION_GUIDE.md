@@ -1,5 +1,104 @@
 # Frontend Migration Guide: Tauri to Web/Hybrid
 
+Complete guide for migrating Meetily frontend to support both Tauri desktop and web browser environments.
+
+---
+
+## 🎯 Quick Start with Hooks
+
+**NEW!** The easiest way to migrate is using the custom hooks. See [HOOKS_USAGE_EXAMPLE.md](./HOOKS_USAGE_EXAMPLE.md) for complete working examples.
+
+```typescript
+import { useRecordingManager } from '@/hooks/useRecordingManager';
+import { useTranscriptManager } from '@/hooks/useTranscriptManager';
+import { useSummaryManager } from '@/hooks/useSummaryManager';
+import { useModelConfig } from '@/hooks/useModelConfig';
+
+function MyComponent() {
+  const recording = useRecordingManager();
+  const transcript = useTranscriptManager(serverAddress);
+  const summary = useSummaryManager();
+  const { modelConfig } = useModelConfig();
+
+  // Everything works in both Tauri and web!
+  await recording.startRecording('Meeting Title');
+  await transcript.startListeningForTranscripts();
+  await summary.generateSummary(text, meetingId, modelConfig.provider, modelConfig.model);
+}
+```
+
+---
+
+## Overview
+
+### Infrastructure Components
+
+**Core Libraries:**
+1. `platform.ts` - Platform detection and compatibility
+2. `apiClient.ts` - Unified backend API client
+3. `recordingAdapter.ts` - Recording functionality adapter
+4. `browserRecording.ts` - Browser audio recording
+
+**Custom Hooks:**
+5. `useRecordingManager.ts` - Recording state management
+6. `useTranscriptManager.ts` - Transcript handling + WebSocket
+7. `useSummaryManager.ts` - AI summary generation + polling
+8. `useModelConfig.ts` - Model configuration
+
+**Backend:**
+9. WebSocket endpoints for real-time transcripts
+
+### Migration Status
+
+✅ **Completed:**
+- Platform detection
+- API client
+- Recording adapter
+- Browser recording utilities
+- SidebarProvider migration
+- All custom hooks
+- WebSocket backend
+
+⏳ **Ready to Migrate (using hooks):**
+- Main page (`app/page.tsx`)
+- RecordingControls
+- DeviceSelection
+- Other components
+
+---
+
+## Migration Approaches
+
+### Option 1: Use Hooks (Recommended)
+
+Replace complex state management with simple hooks:
+
+```typescript
+// Old (100+ lines of state + invoke calls)
+const [isRecording, setIsRecording] = useState(false);
+const [devices, setDevices] = useState([]);
+// ... many more state variables
+
+const startRecording = async () => {
+  const devices = await invoke('list_input_devices');
+  setDevices(devices);
+  await invoke('start_recording', { ... });
+  // ... complex logic
+};
+
+// New (much simpler!)
+const recording = useRecordingManager();
+await recording.startRecording(title);
+```
+
+### Option 2: Manual Migration
+
+Use adapters directly for fine-grained control. See details below.
+
+---
+
+# Frontend Migration Guide: Tauri to Web/Hybrid
+
 This guide documents the migration of the Meetily frontend from Tauri-only to a hybrid architecture that supports both Tauri desktop and web browser environments.
 
 ## Overview
