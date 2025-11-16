@@ -12,35 +12,49 @@ let cachedWebSocketUrl: string | null = null;
 /**
  * Get the backend API URL
  *
- * In production/Docker: Use NEXT_PUBLIC_API_URL environment variable
- * In development:
- *   - If NEXT_PUBLIC_API_URL is set, use it
- *   - Otherwise, construct from window.location (works for remote access)
+ * PRODUCTION/REVERSE PROXY (Traefik, nginx, etc.):
+ *   - REQUIRED: Set NEXT_PUBLIC_API_URL environment variable
+ *   - Example: NEXT_PUBLIC_API_URL=https://app.domain.com/api
+ *   - Or: NEXT_PUBLIC_API_URL=https://api.domain.com
  *
- * This allows the web app to be accessed from any machine on the network.
+ * DEVELOPMENT (direct access without reverse proxy):
+ *   - Local: http://localhost:5167 (auto-detected)
+ *   - Network: http://192.168.1.100:5167 (auto-detected from hostname)
  *
- * Examples:
- * - Local dev: http://localhost:5167
- * - Network access: http://192.168.1.100:5167
- * - Production: https://your-domain.com/api
+ * The dynamic URL construction ONLY works for direct access.
+ * If using reverse proxy, you MUST set the environment variable!
  */
 export function getBackendUrl(): string {
   if (cachedBackendUrl) {
     return cachedBackendUrl;
   }
 
-  // Always prefer environment variable if set
+  // CRITICAL: Always prefer environment variable if set
+  // This is REQUIRED for production/reverse proxy deployments
   if (process.env.NEXT_PUBLIC_API_URL) {
     cachedBackendUrl = process.env.NEXT_PUBLIC_API_URL;
+    console.log('[Config] Using NEXT_PUBLIC_API_URL:', cachedBackendUrl);
     return cachedBackendUrl;
   }
 
-  // In browser: construct URL from current host
+  // Development fallback: construct URL from current host
+  // WARNING: This only works for direct access (no reverse proxy)
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol;
     const hostname = window.location.hostname;
-    // Backend runs on port 5167
+
+    // If accessed via domain (not localhost/IP), use relative path
+    // This assumes backend is behind same reverse proxy at /api
+    if (hostname !== 'localhost' && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      // Accessed via domain - assume reverse proxy with /api path
+      cachedBackendUrl = '/api';
+      console.warn('[Config] Domain detected, using relative /api path. Set NEXT_PUBLIC_API_URL for production!');
+      return cachedBackendUrl;
+    }
+
+    // Local dev or direct IP access - use port 5167
     cachedBackendUrl = `${protocol}//${hostname}:5167`;
+    console.log('[Config] Local/IP access detected, using:', cachedBackendUrl);
     return cachedBackendUrl;
   }
 
@@ -50,23 +64,44 @@ export function getBackendUrl(): string {
 
 /**
  * Get WebSocket URL for real-time updates
+ *
+ * PRODUCTION/REVERSE PROXY:
+ *   - REQUIRED: Set NEXT_PUBLIC_WS_URL environment variable
+ *   - Example: NEXT_PUBLIC_WS_URL=wss://app.domain.com/api/ws
+ *   - Or: NEXT_PUBLIC_WS_URL=wss://api.domain.com/ws
+ *
+ * DEVELOPMENT:
+ *   - Auto-detected based on hostname
  */
 export function getWebSocketUrl(): string {
   if (cachedWebSocketUrl) {
     return cachedWebSocketUrl;
   }
 
-  // Always prefer environment variable if set
+  // CRITICAL: Always prefer environment variable if set
   if (process.env.NEXT_PUBLIC_WS_URL) {
     cachedWebSocketUrl = process.env.NEXT_PUBLIC_WS_URL;
+    console.log('[Config] Using NEXT_PUBLIC_WS_URL:', cachedWebSocketUrl);
     return cachedWebSocketUrl;
   }
 
-  // In browser: construct URL from current host
+  // Development fallback: construct URL from current host
   if (typeof window !== 'undefined') {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const hostname = window.location.hostname;
+
+    // If accessed via domain (not localhost/IP), use relative path
+    if (hostname !== 'localhost' && !hostname.match(/^\d+\.\d+\.\d+\.\d+$/)) {
+      // Accessed via domain - assume reverse proxy
+      const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      cachedWebSocketUrl = `${wsProtocol}//${hostname}/api/ws`;
+      console.warn('[Config] Domain detected for WS, using:', cachedWebSocketUrl, 'Set NEXT_PUBLIC_WS_URL for production!');
+      return cachedWebSocketUrl;
+    }
+
+    // Local dev or direct IP access
     cachedWebSocketUrl = `${protocol}//${hostname}:5167`;
+    console.log('[Config] Local/IP WS access detected, using:', cachedWebSocketUrl);
     return cachedWebSocketUrl;
   }
 
