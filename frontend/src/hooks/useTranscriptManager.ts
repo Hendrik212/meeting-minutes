@@ -135,7 +135,7 @@ export function useTranscriptManager(
       return unlisten;
     } else {
       // Web: Use WebSocket connection for real-time transcripts
-      const { initializeConfig, getWebSocketUrl } = await import('@/lib/apiClient');
+      const { initializeConfig, getWebSocketUrl } = await import('@/lib/config');
 
       // Ensure config is loaded before creating WebSocket
       await initializeConfig();
