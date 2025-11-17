@@ -8,6 +8,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { isTauri, platformListen } from '@/lib/platform';
 import { apiClient } from '@/lib/apiClient';
+import { initializeConfig, getWebSocketUrl } from '@/lib/config';
 import type { Transcript, TranscriptUpdate } from '@/types';
 import { toast } from 'sonner';
 
@@ -134,10 +135,10 @@ export function useTranscriptManager(
 
       return unlisten;
     } else {
-      // Web: Use WebSocket
-      const wsUrl = serverAddress
-        ? `${serverAddress.replace('http', 'ws')}/ws/transcripts${meetingId ? `/${meetingId}` : ''}`
-        : `ws://localhost:5167/ws/transcripts${meetingId ? `/${meetingId}` : ''}`;
+      // Web: Use WebSocket - Ensure config is loaded first
+      await initializeConfig();
+      const baseWsUrl = getWebSocketUrl();
+      const wsUrl = `${baseWsUrl}/ws/transcripts${meetingId ? `/${meetingId}` : ''}`;
 
       console.log('Connecting to WebSocket:', wsUrl);
 
