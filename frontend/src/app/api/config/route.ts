@@ -49,9 +49,10 @@ export async function GET(request: NextRequest) {
       const wsProto = forwardedProto === 'https' ? 'wss' : 'ws';
       websocketUrl = `${wsProto}://${hostWithoutPort}:5167`;
     } else {
-      // Production domain: WebSocket at same domain via /api/ws path
+      // Production domain: WebSocket at same domain via /api path
+      // Components will append the specific WebSocket endpoint (e.g., /ws/transcripts)
       const wsProto = forwardedProto === 'https' ? 'wss' : 'ws';
-      websocketUrl = `${wsProto}://${forwardedHost}/api/ws`;
+      websocketUrl = `${wsProto}://${forwardedHost}/api`;
     }
   }
 
