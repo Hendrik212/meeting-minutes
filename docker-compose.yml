@@ -8,21 +8,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile.web
-      # No NEXT_PUBLIC_API_URL - let auto-detection work!
-      # Only set this if you need to override (e.g., backend at different domain)
     container_name: meetily-frontend
     restart: unless-stopped
     ports:
       - "3118:3000"
     environment:
       - NODE_ENV=production
-      # No NEXT_PUBLIC_API_URL - auto-detection will find backend at /api
-      # Uncomment only if backend is at different domain:
-      # - NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+      # Backend URL for Next.js API proxy (internal Docker network)
+      - BACKEND_URL=http://backend:5167
     depends_on:
       - backend
     labels:
-      # Traefik configuration
+      # Traefik configuration (only frontend exposed)
       - "traefik.enable=true"
       - "traefik.http.routers.frontend.rule=Host(`${DOMAIN:-localhost}`)"
       - "traefik.http.routers.frontend.entrypoints=websecure"
@@ -43,9 +40,11 @@ services:
         GPU_TYPE: ${GPU_TYPE:-rocm}  # rocm, cuda, or cpu
     container_name: meetily-backend
     restart: unless-stopped
-    ports:
-      - "5167:5167"
-      - "8178:8178"  # Whisper server
+    # No external ports - accessed via frontend proxy only
+    # Uncomment for direct access during development/debugging:
+    # ports:
+    #   - "5167:5167"
+    #   - "8178:8178"
     environment:
       # Application Settings
       - ENVIRONMENT=production
@@ -91,15 +90,7 @@ services:
 
       # Optional: Mount local models to avoid re-downloading
       # - ./models:/data/models:ro
-    labels:
-      # Traefik configuration
-      - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`${DOMAIN:-localhost}`) && PathPrefix(`/api`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
-      - "traefik.http.routers.backend.tls.certresolver=letsencrypt"
-      - "traefik.http.services.backend.loadbalancer.server.port=5167"
-      - "traefik.http.middlewares.backend-stripprefix.stripprefix.prefixes=/api"
-      - "traefik.http.routers.backend.middlewares=backend-stripprefix"
+    # No Traefik labels - backend is accessed via frontend proxy
     networks:
       - meetily-network
     # AMD GPU Support via ROCm
