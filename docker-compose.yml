@@ -167,6 +167,13 @@ volumes:
 # ============================================
 # Networks
 # ============================================
+# For external Traefik: Set TRAEFIK_NETWORK env var and uncomment 'external: true'
+# For built-in Traefik: Use default bridge network (current setup)
 networks:
   meetily-network:
+    # Uncomment these lines if using external Traefik:
+    # external: true
+    # name: ${TRAEFIK_NETWORK:-traefik}
+    #
+    # Comment this line if using external Traefik:
     driver: bridge
