@@ -7,7 +7,7 @@ export function useTemplates() {
   const [availableTemplates, setAvailableTemplates] = useState<Array<{
     id: string;
     name: string;
-    description: string;
+    prompt: string;
   }>>([]);
   const [selectedTemplate, setSelectedTemplate] = useState<string>('standard_meeting');
 
