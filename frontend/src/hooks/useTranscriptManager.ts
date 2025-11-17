@@ -8,7 +8,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { isTauri, platformListen } from '@/lib/platform';
 import { apiClient } from '@/lib/apiClient';
-import { initializeConfig, getWebSocketUrl } from '@/lib/config';
 import type { Transcript, TranscriptUpdate } from '@/types';
 import { toast } from 'sonner';
 
@@ -135,23 +134,27 @@ export function useTranscriptManager(
 
       return unlisten;
     } else {
-      // Web: Use WebSocket - Ensure config is loaded first
+      // Web: Use WebSocket connection for real-time transcripts
+      const { initializeConfig, getWebSocketUrl } = await import('@/lib/apiClient');
+
+      // Ensure config is loaded before creating WebSocket
       await initializeConfig();
       const baseWsUrl = getWebSocketUrl();
       const wsUrl = `${baseWsUrl}/ws/transcripts${meetingId ? `/${meetingId}` : ''}`;
 
-      console.log('Connecting to WebSocket:', wsUrl);
+      console.log('🌐 [Web Mode] Connecting to WebSocket for transcripts:', wsUrl);
 
       const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
 
       ws.onopen = () => {
-        console.log('WebSocket connected for transcripts');
+        console.log('✅ WebSocket connected for transcripts');
       };
 
       ws.onmessage = (event) => {
         try {
           const payload: TranscriptUpdate = JSON.parse(event.data);
-          console.log('Received transcript via WebSocket:', payload);
+          console.log('Received transcript update:', payload);
 
           const newTranscript: Transcript = {
             id: `transcript-${Date.now()}-${payload.sequence_id}`,
@@ -164,26 +167,24 @@ export function useTranscriptManager(
 
           setTranscripts(prev => [...prev, newTranscript]);
         } catch (error) {
-          console.error('Error parsing WebSocket message:', error);
+          console.error('Error parsing transcript update:', error);
         }
       };
 
       ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        toast.error('Connection error: Transcripts may not update in real-time');
+        console.error('❌ WebSocket error:', error);
       };
 
       ws.onclose = () => {
-        console.log('WebSocket disconnected');
+        console.log('🔌 WebSocket disconnected');
       };
-
-      wsRef.current = ws;
 
       // Return cleanup function
       return () => {
         if (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING) {
           ws.close();
         }
+        wsRef.current = null;
       };
     }
   }, [serverAddress]);
