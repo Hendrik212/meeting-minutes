@@ -149,15 +149,14 @@ export class Analytics {
 
   // Enhanced user tracking methods for Phase 1
   static async startSession(userId: string): Promise<string | null> {
-    if (!this.initialized) {
-      console.warn('Analytics not initialized');
+    if (!this.initialized || !isTauri()) {
       return null;
     }
 
     try {
       const sessionId = await platformInvoke('start_analytics_session', { userId });
       this.currentUserId = userId;
-      
+
       return sessionId as string;
     } catch (error) {
       console.error('Failed to start analytics session:', error);
@@ -166,7 +165,7 @@ export class Analytics {
   }
 
   static async endSession(): Promise<void> {
-    if (!this.initialized) return;
+    if (!this.initialized || !isTauri()) return;
 
     try {
       await platformInvoke('end_analytics_session');
@@ -176,7 +175,7 @@ export class Analytics {
   }
 
   static async trackDailyActiveUser(): Promise<void> {
-    if (!this.initialized) return;
+    if (!this.initialized || !isTauri()) return;
 
     try {
       await platformInvoke('track_daily_active_user');
@@ -186,7 +185,7 @@ export class Analytics {
   }
 
   static async trackUserFirstLaunch(): Promise<void> {
-    if (!this.initialized) return;
+    if (!this.initialized || !isTauri()) return;
 
     try {
       await platformInvoke('track_user_first_launch');
@@ -208,13 +207,23 @@ export class Analytics {
 
   // User ID management with persistent storage
   static async getPersistentUserId(): Promise<string> {
+    // In web mode, use localStorage
+    if (!isTauri()) {
+      let userId = localStorage.getItem('meetily_user_id');
+      if (!userId) {
+        userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        localStorage.setItem('meetily_user_id', userId);
+      }
+      return userId;
+    }
+
     try {
-      // First check if we have a stored user ID
+      // Tauri mode: use Tauri store
       const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('analytics.json');
-      
+
       let userId = await store.get<string>('user_id');
-      
+
       if (!userId) {
         // Generate new user ID
         userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -222,28 +231,31 @@ export class Analytics {
         await store.set('is_first_launch', true);
         await store.save();
       }
-      
+
       return userId;
     } catch (error) {
       console.error('Failed to get persistent user ID:', error);
-      // Fallback to session storage
-      let userId = sessionStorage.getItem('meetily_user_id');
+      // Fallback to localStorage
+      let userId = localStorage.getItem('meetily_user_id');
       if (!userId) {
         userId = `user_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        sessionStorage.setItem('meetily_user_id', userId);
-        sessionStorage.setItem('is_first_launch', 'true');
+        localStorage.setItem('meetily_user_id', userId);
       }
       return userId;
     }
   }
 
   static async checkAndTrackFirstLaunch(): Promise<void> {
+    if (!isTauri()) {
+      return; // Analytics only in Tauri mode
+    }
+
     try {
       const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('analytics.json');
-      
+
       const isFirstLaunch = await store.get<boolean>('is_first_launch');
-      
+
       if (isFirstLaunch) {
         await this.trackUserFirstLaunch();
         await store.set('is_first_launch', false);
@@ -251,23 +263,21 @@ export class Analytics {
       }
     } catch (error) {
       console.error('Failed to check first launch:', error);
-      // Fallback to session storage
-      const isFirstLaunch = sessionStorage.getItem('is_first_launch') === 'true';
-      if (isFirstLaunch) {
-        await this.trackUserFirstLaunch();
-        sessionStorage.removeItem('is_first_launch');
-      }
     }
   }
 
   static async checkAndTrackDailyUsage(): Promise<void> {
+    if (!isTauri()) {
+      return; // Analytics only in Tauri mode
+    }
+
     try {
       const { Store } = await import('@tauri-apps/plugin-store');
       const store = await Store.load('analytics.json');
-      
+
       const today = new Date().toISOString().split('T')[0];
       const lastTrackedDate = await store.get<string>('last_daily_tracked');
-      
+
       if (lastTrackedDate !== today) {
         await this.trackDailyActiveUser();
         await store.set('last_daily_tracked', today);
@@ -688,15 +698,17 @@ export class Analytics {
 
   // Track backend connection success/failure
   static async trackBackendConnection(success: boolean, error?: string) {
+    if (!isTauri()) {
+      return; // Analytics only in Tauri mode
+    }
+
     // Wait for analytics to be initialized
     const isInitialized = await this.waitForInitialization();
     if (!isInitialized) {
-      console.warn('Analytics not initialized within timeout, skipping backend connection tracking');
       return;
     }
 
     try {
-      console.log('Tracking backend connection event:', { success, error });
       await platformInvoke('track_event', {
         eventName: 'backend_connection',
         properties: {
@@ -705,7 +717,6 @@ export class Analytics {
           timestamp: new Date().toISOString()
         }
       });
-      console.log('Backend connection event tracked successfully');
     } catch (error) {
       console.error('Failed to track backend connection:', error);
     }
