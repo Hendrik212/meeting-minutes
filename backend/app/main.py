@@ -980,7 +980,7 @@ async def save_auto_generate_setting(request: AutoGenerateSettingRequest):
         logger.error(f"Error saving auto-generate setting: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.get("/api/health")
+@app.get("/health")
 async def health_check():
     """Health check endpoint for Docker and monitoring"""
     return {

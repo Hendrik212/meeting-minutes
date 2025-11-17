@@ -288,7 +288,7 @@ export class ApiClient {
   // ====================================================================
 
   async healthCheck(): Promise<{ status: string; service: string; timestamp: number }> {
-    return this.fetch('/api/health');
+    return this.fetch('/health');
   }
 
   // ====================================================================
