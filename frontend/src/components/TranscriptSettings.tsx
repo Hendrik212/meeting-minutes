@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { isTauri } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Input } from './ui/input';
 import { Button } from './ui/button';
@@ -38,15 +39,9 @@ export function TranscriptSettings({ transcriptModelConfig, setTranscriptModelCo
     }, [transcriptModelConfig.provider]);
 
     const fetchApiKey = async (provider: string) => {
-        if (!isTauri()) {
-            // API key fetching only available in Tauri
-            setApiKey(null);
-            return;
-        }
-
         try {
-            const data = await platformInvoke<string>('api_get_transcript_api_key', { provider });
-            setApiKey(data || '');
+            const data = await apiClient.getTranscriptApiKey(provider);
+            setApiKey(data.api_key || '');
         } catch (err) {
             console.error('Error fetching API key:', err);
             setApiKey(null);
