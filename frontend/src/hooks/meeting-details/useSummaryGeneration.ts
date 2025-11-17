@@ -3,6 +3,7 @@ import { Transcript, Summary } from '@/types';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
 import { apiClient } from '@/lib/apiClient';
+import { isTauri, platformInvoke } from '@/lib/platform';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -281,8 +282,8 @@ export function useSummaryGeneration({
       template: selectedTemplate
     });
 
-    // Check if Ollama provider has models available
-    if (modelConfig.provider === 'ollama') {
+    // Check if Ollama provider has models available (Tauri only)
+    if (modelConfig.provider === 'ollama' && isTauri()) {
       try {
         const endpoint = modelConfig.ollamaEndpoint || null;
         const models = await platformInvoke('get_ollama_models', { endpoint }) as any[];
