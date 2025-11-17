@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { platformInvoke } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -15,13 +15,9 @@ export function useTemplates() {
   useEffect(() => {
     const fetchTemplates = async () => {
       try {
-        const templates = await platformInvoke('api_list_templates') as Array<{
-          id: string;
-          name: string;
-          description: string;
-        }>;
-        console.log('Available templates:', templates);
-        setAvailableTemplates(templates);
+        const data = await apiClient.listTemplates();
+        console.log('Available templates:', data.templates);
+        setAvailableTemplates(data.templates);
       } catch (error) {
         console.error('Failed to fetch templates:', error);
       }

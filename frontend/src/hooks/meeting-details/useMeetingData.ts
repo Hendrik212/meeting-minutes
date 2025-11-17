@@ -2,7 +2,7 @@ import { useState, useCallback, useRef } from 'react';
 import { Transcript, Summary } from '@/types';
 import { BlockNoteSummaryViewRef } from '@/components/AISummary/BlockNoteSummaryView';
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { platformInvoke } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { toast } from 'sonner';
 
 interface UseMeetingDataProps {
@@ -40,10 +40,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
 
   const handleSaveMeetingTitle = useCallback(async () => {
     try {
-      await platformInvoke('api_save_meeting_title', {
-        meetingId: meeting.id,
-        title: meetingTitle,
-      });
+      await apiClient.saveMeetingTitle(meeting.id, meetingTitle);
 
       console.log('Save meeting title success');
       setIsTitleDirty(false);
@@ -93,10 +90,7 @@ export function useMeetingData({ meeting, summaryData, onMeetingUpdated }: UseMe
         };
       }
 
-      await platformInvoke('api_save_meeting_summary', {
-        meetingId: meeting.id,
-        summary: formattedSummary,
-      });
+      await apiClient.saveMeetingSummary(meeting.id, formattedSummary);
 
       console.log('✅ Save meeting summary success');
     } catch (error) {

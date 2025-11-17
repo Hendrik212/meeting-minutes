@@ -10,7 +10,8 @@ import {  ModelConfig } from '@/components/ModelSettingsModal';
 import { SettingTabs } from '../SettingTabs';
 import { TranscriptModelProps } from '@/components/TranscriptSettings';
 import Analytics from '@/lib/analytics';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { isTauri } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 
@@ -106,15 +107,13 @@ const Sidebar: React.FC = () => {
       }
 
       try {
-        const data = await platformInvoke('api_get_model_config') as any;
+        const data = await apiClient.getModelConfig() as any;
         if (data && data.provider !== null) {
           // Fetch API key if not included and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
             try {
-              const apiKeyData = await platformInvoke('api_get_api_key', {
-                provider: data.provider
-              }) as string;
-              data.apiKey = apiKeyData;
+              const apiKeyData = await apiClient.getApiKey(data.provider);
+              data.apiKey = apiKeyData.api_key;
             } catch (err) {
               console.error('Failed to fetch API key:', err);
             }
@@ -140,7 +139,7 @@ const Sidebar: React.FC = () => {
       }
 
       try {
-        const data = await platformInvoke('api_get_transcript_config') as any;
+        const data = await apiClient.getTranscriptConfig() as any;
         if (data && data.provider !== null) {
           setTranscriptModelConfig(data);
         }
@@ -151,8 +150,12 @@ const Sidebar: React.FC = () => {
     fetchTranscriptSettings();
   }, [serverAddress]);
 
-  // Listen for model config updates from other components
+  // Listen for model config updates from other components (Tauri only)
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     const setupListener = async () => {
       const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<ModelConfig>('model-config-updated', (event) => {
@@ -176,21 +179,22 @@ const Sidebar: React.FC = () => {
   // Handle model config save
   const handleSaveModelConfig = async (config: ModelConfig) => {
     try {
-      await platformInvoke('api_save_model_config', {
-        provider: config.provider,
-        model: config.model,
-        whisperModel: config.whisperModel,
-        apiKey: config.apiKey,
-        ollamaEndpoint: config.ollamaEndpoint,
-      });
+      await apiClient.saveModelConfig(
+        config.provider,
+        config.model,
+        config.whisperModel,
+        config.apiKey || undefined
+      );
 
       setModelConfig(config);
       console.log('Model config saved successfully');
       setSettingsSaveSuccess(true);
 
-      // Emit event to sync other components
-      const { emit } = await import('@tauri-apps/api/event');
-      await emit('model-config-updated', config);
+      // Emit event to sync other components (Tauri only)
+      if (isTauri()) {
+        const { emit } = await import('@tauri-apps/api/event');
+        await emit('model-config-updated', config);
+      }
 
       // Track settings change
       await Analytics.trackSettingsChanged('model_config', `${config.provider}_${config.model}`);
@@ -209,16 +213,17 @@ const Sidebar: React.FC = () => {
         apiKey: configToSave.apiKey ?? null
       };
       console.log('Saving transcript config with payload:', payload);
-      
-      await platformInvoke('api_save_transcript_config', {
-        provider: payload.provider,
-        model: payload.model,
-        apiKey: payload.apiKey,
-      });
 
-      
+      await apiClient.saveTranscriptConfig(
+        payload.provider,
+        payload.model,
+        payload.apiKey || undefined,
+        0
+      );
+
+
       setSettingsSaveSuccess(true);
-      
+
       // Track settings change
       const transcriptConfigToSave = updatedConfig || transcriptModelConfig;
       await Analytics.trackSettingsChanged('transcript_config', `${transcriptConfigToSave.provider}_${transcriptConfigToSave.model}`);
@@ -311,19 +316,13 @@ const Sidebar: React.FC = () => {
 
   const handleDelete = async (itemId: string) => {
     console.log('Deleting item:', itemId);
-    const payload = {
-      meetingId: itemId
-    };
-    
+
     try{
-      const { invoke } = await import('@tauri-apps/api/core');
-      await platformInvoke('api_delete_meeting', {
-        meetingId: itemId,
-      });
+      await apiClient.deleteMeeting(itemId);
       console.log('Meeting deleted successfully');
       const updatedMeetings = meetings.filter((m: CurrentMeeting) => m.id !== itemId);
       setMeetings(updatedMeetings);
-      
+
       // Track meeting deletion
       Analytics.trackMeetingDeleted(itemId);
 
@@ -375,10 +374,7 @@ const Sidebar: React.FC = () => {
     }
 
     try {
-      await platformInvoke('api_save_meeting_title', {
-        meetingId: meetingId,
-        title: newTitle,
-      });
+      await apiClient.saveMeetingTitle(meetingId, newTitle);
 
       // Update local state
       const updatedMeetings = meetings.map((m: CurrentMeeting) =>

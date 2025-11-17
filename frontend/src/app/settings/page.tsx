@@ -3,16 +3,13 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Settings2, Mic, Database as DatabaseIcon, SparkleIcon } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { isTauri, platformInvoke } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { TranscriptSettings, TranscriptModelProps } from '@/components/TranscriptSettings';
 import { RecordingSettings } from '@/components/RecordingSettings';
 import { PreferenceSettings } from '@/components/PreferenceSettings';
 import { SummaryModelSettings } from '@/components/SummaryModelSettings';
 import { LanguageSelection } from '@/components/LanguageSelection';
 import * as recordingAdapter from '@/lib/recordingAdapter';
-
-// Backend API URL - must be full URL for web browser
-const BACKEND_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5167';
 
 type SettingsTab = 'general' | 'recording' | 'Transcriptionmodels' | 'summaryModels';
 
@@ -38,18 +35,7 @@ export default function SettingsPage() {
   useEffect(() => {
     const loadTranscriptConfig = async () => {
       try {
-        let config: any;
-
-        if (isTauri()) {
-          // Desktop: Use Tauri command (proxies to backend)
-          config = await platformInvoke('api_get_transcript_config');
-        } else {
-          // Web: Call backend API directly
-          const response = await fetch(`${BACKEND_URL}/get-transcript-config`);
-          if (response.ok) {
-            config = await response.json();
-          }
-        }
+        const config = await apiClient.getTranscriptConfig();
 
         if (config) {
           console.log('Loaded saved transcript config:', config);
@@ -87,33 +73,12 @@ export default function SettingsPage() {
     try {
       console.log('[SettingsPage] Saving transcript config:', config);
 
-      if (isTauri()) {
-        // Desktop: Use Tauri command (proxies to backend)
-        await platformInvoke('api_save_transcript_config', {
-          provider: config.provider,
-          model: config.model,
-          apiKey: config.apiKey,
-          diarization: config.diarization || 0
-        });
-      } else {
-        // Web: Call backend API directly
-        const response = await fetch(`${BACKEND_URL}/save-transcript-config`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            provider: config.provider,
-            model: config.model,
-            apiKey: config.apiKey,
-            diarization: config.diarization || 0
-          })
-        });
-
-        if (!response.ok) {
-          throw new Error('Failed to save transcript config');
-        }
-      }
+      await apiClient.saveTranscriptConfig(
+        config.provider,
+        config.model,
+        config.apiKey || undefined,
+        config.diarization || 0
+      );
 
       console.log('[SettingsPage] ✅ Successfully saved transcript config');
     } catch (error) {

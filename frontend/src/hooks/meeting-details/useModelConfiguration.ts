@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { ModelConfig } from '@/components/ModelSettingsModal';
-import { platformInvoke } from '@/lib/platform';
+import { isTauri } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -24,7 +25,7 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
       setIsLoading(true);
       try {
         console.log('🔄 Fetching model configuration from database...');
-        const data = await platformInvoke('api_get_model_config', {}) as any;
+        const data = await apiClient.getModelConfig() as any;
         if (data && data.provider !== null) {
           console.log('✅ Loaded model config from database:', {
             provider: data.provider,
@@ -36,10 +37,8 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
           // Fetch API key if not included and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
             try {
-              const apiKeyData = await platformInvoke('api_get_api_key', {
-                provider: data.provider
-              }) as string;
-              data.apiKey = apiKeyData;
+              const apiKeyData = await apiClient.getApiKey(data.provider);
+              data.apiKey = apiKeyData.api_key;
             } catch (err) {
               console.error('Failed to fetch API key:', err);
             }
@@ -59,8 +58,12 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
     fetchModelConfig();
   }, [serverAddress]);
 
-  // Listen for model config updates from other components
+  // Listen for model config updates from other components (Tauri only)
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     const setupListener = async () => {
       const { listen } = await import('@tauri-apps/api/event');
       const unlisten = await listen<ModelConfig>('model-config-updated', (event) => {
@@ -105,20 +108,21 @@ export function useModelConfiguration({ serverAddress }: UseModelConfigurationPr
         );
       }
 
-      await platformInvoke('api_save_model_config', {
-        provider: payload.provider,
-        model: payload.model,
-        whisperModel: payload.whisperModel,
-        apiKey: payload.apiKey,
-        ollamaEndpoint: payload.ollamaEndpoint,
-      });
+      await apiClient.saveModelConfig(
+        payload.provider,
+        payload.model,
+        payload.whisperModel,
+        payload.apiKey || undefined
+      );
 
       console.log('Save model config success');
       setModelConfig(payload);
 
-      // Emit event to sync other components
-      const { emit } = await import('@tauri-apps/api/event');
-      await emit('model-config-updated', payload);
+      // Emit event to sync other components (Tauri only)
+      if (isTauri()) {
+        const { emit } = await import('@tauri-apps/api/event');
+        await emit('model-config-updated', payload);
+      }
 
       toast.success("Summary settings Saved successfully");
 

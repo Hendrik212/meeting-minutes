@@ -2,7 +2,7 @@ import { useState, useCallback } from 'react';
 import { Transcript, Summary } from '@/types';
 import { ModelConfig } from '@/components/ModelSettingsModal';
 import { CurrentMeeting, useSidebar } from '@/components/Sidebar/SidebarProvider';
-import { platformInvoke } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { toast } from 'sonner';
 import Analytics from '@/lib/analytics';
 
@@ -94,16 +94,13 @@ export function useSummaryGeneration({
       }
 
       // Process transcript and get process_id
-      const result = await platformInvoke('api_process_transcript', {
-        text: transcriptText,
-        model: modelConfig.provider,
-        modelName: modelConfig.model,
-        meetingId: meeting.id,
-        chunkSize: 40000,
-        overlap: 1000,
-        customPrompt: customPrompt,
-        templateId: selectedTemplate,
-      }) as any;
+      const result = await apiClient.generateSummary(
+        transcriptText,
+        modelConfig.provider,
+        modelConfig.model,
+        meeting.id,
+        customPrompt
+      );
 
       const process_id = result.process_id;
       console.log('Process ID:', process_id);

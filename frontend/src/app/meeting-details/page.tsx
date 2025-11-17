@@ -6,6 +6,7 @@ import PageContent from "./page-content";
 import { useRouter, useSearchParams } from "next/navigation";
 import Analytics from "@/lib/analytics";
 import { isTauri, platformInvoke } from "@/lib/platform";
+import { apiClient } from "@/lib/apiClient";
 import { LoaderIcon } from "lucide-react";
 
 interface MeetingDetailsResponse {
@@ -28,8 +29,13 @@ function MeetingDetailsContent() {
   const [shouldAutoGenerate, setShouldAutoGenerate] = useState<boolean>(false);
   const [hasCheckedAutoGen, setHasCheckedAutoGen] = useState<boolean>(false);
 
-  // Check if gemma3:1b model is available in Ollama
+  // Check if gemma3:1b model is available in Ollama (Tauri only)
   const checkForGemmaModel = useCallback(async (): Promise<boolean> => {
+    if (!isTauri()) {
+      console.log('🌐 Web mode: Skipping Ollama model check');
+      return false;
+    }
+
     try {
       const models = await platformInvoke('get_ollama_models', { endpoint: null }) as any[];
       const hasGemma = models.some((m: any) => m.name === 'gemma3:1b');
@@ -47,7 +53,7 @@ function MeetingDetailsContent() {
 
     try {
       // ✅ STEP 1: Check what's currently in database
-      const currentConfig = await platformInvoke('api_get_model_config') as any;
+      const currentConfig = await apiClient.getModelConfig() as any;
 
       // ✅ STEP 2: If DB already has a model, use it (never override!)
       if (currentConfig && currentConfig.model) {
@@ -57,19 +63,17 @@ function MeetingDetailsContent() {
         return;
       }
 
-      // ✅ STEP 3: DB is empty - check if gemma3:1b exists as fallback
+      // ✅ STEP 3: DB is empty - check if gemma3:1b exists as fallback (Tauri only)
       const hasGemma = await checkForGemmaModel();
 
       if (hasGemma) {
         console.log('💾 DB empty, using gemma3:1b as initial default');
 
-        await platformInvoke('api_save_model_config', {
-          provider: 'ollama',
-          model: 'gemma3:1b',
-          whisperModel: 'large-v3',
-          apiKey: null,
-          ollamaEndpoint: null,
-        });
+        await apiClient.saveModelConfig(
+          'ollama',
+          'gemma3:1b',
+          'large-v3'
+        );
 
         setShouldAutoGenerate(true);
       } else {
@@ -89,9 +93,7 @@ function MeetingDetailsContent() {
     }
 
     try {
-      const data = await platformInvoke('api_get_meeting', {
-        meetingId: meetingId,
-      }) as any;
+      const data = await apiClient.getMeeting(meetingId) as any;
       console.log('Meeting details:', data);
       setMeetingDetails(data);
 
@@ -131,9 +133,7 @@ function MeetingDetailsContent() {
 
     const fetchMeetingSummary = async () => {
       try {
-        const summary = await platformInvoke('api_get_summary', {
-          meetingId: meetingId,
-        }) as any;
+        const summary = await apiClient.getSummaryStatus(meetingId!) as any;
 
         console.log('🔍 FETCH SUMMARY: Raw response:', summary);
 

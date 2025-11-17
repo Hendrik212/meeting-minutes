@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSidebar } from './Sidebar/SidebarProvider';
 import { isTauri, platformInvoke } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { Button } from '@/components/ui/button';
 import { useOllamaDownload } from '@/contexts/OllamaDownloadContext';
 import { Input } from '@/components/ui/input';
@@ -112,10 +113,8 @@ export function ModelSettingsModal({
 
   const fetchApiKey = async (provider: string) => {
     try {
-      const data = (await platformInvoke('api_get_api_key', {
-        provider,
-      })) as string;
-      setApiKey(data || '');
+      const data = await apiClient.getApiKey(provider);
+      setApiKey(data.api_key || '');
     } catch (err) {
       console.error('Error fetching API key:', err);
       setApiKey(null);
@@ -184,18 +183,16 @@ export function ModelSettingsModal({
       }
 
       try {
-        const data = (await platformInvoke('api_get_model_config')) as any;
+        const data = (await apiClient.getModelConfig()) as any;
         if (data && data.provider !== null) {
           setModelConfig(data);
 
           // Fetch API key if not included in response and provider requires it
           if (data.provider !== 'ollama' && !data.apiKey) {
             try {
-              const apiKeyData = await platformInvoke('api_get_api_key', {
-                provider: data.provider
-              }) as string;
-              data.apiKey = apiKeyData;
-              setApiKey(apiKeyData);
+              const apiKeyData = await apiClient.getApiKey(data.provider);
+              data.apiKey = apiKeyData.api_key;
+              setApiKey(apiKeyData.api_key);
             } catch (err) {
               console.error('Failed to fetch API key:', err);
             }
@@ -221,9 +218,9 @@ export function ModelSettingsModal({
   useEffect(() => {
     const fetchAutoGenerateSetting = async () => {
       try {
-        const enabled = (await platformInvoke('api_get_auto_generate_setting')) as boolean;
-        setAutoGenerateEnabled(enabled);
-        console.log('Auto-generate setting loaded:', enabled);
+        const data = await apiClient.getAutoGenerateSetting();
+        setAutoGenerateEnabled(data.enabled);
+        console.log('Auto-generate setting loaded:', data.enabled);
       } catch (err) {
         console.error('Failed to fetch auto-generate setting:', err);
         // Keep default value (true) on error
@@ -277,8 +274,17 @@ export function ModelSettingsModal({
     }
   }, [ollamaEndpoint, lastFetchedEndpoint, modelConfig.provider]);
 
-  // Manual fetch function for Ollama models
+  // Manual fetch function for Ollama models (Tauri only)
   const fetchOllamaModels = async (silent = false) => {
+    if (!isTauri()) {
+      const errorMsg = 'Ollama model fetching is only available in desktop mode';
+      setError(errorMsg);
+      if (!silent) {
+        toast.error(errorMsg);
+      }
+      return;
+    }
+
     const trimmedEndpoint = ollamaEndpoint.trim();
 
     // Validate URL if provided
@@ -342,6 +348,11 @@ export function ModelSettingsModal({
   const loadOpenRouterModels = async () => {
     if (openRouterModels.length > 0) return; // Already loaded
 
+    if (!isTauri()) {
+      setOpenRouterError('OpenRouter model fetching is only available in desktop mode');
+      return;
+    }
+
     try {
       setIsLoadingOpenRouter(true);
       setOpenRouterError('');
@@ -387,8 +398,13 @@ export function ModelSettingsModal({
     }
   };
 
-  // Function to download recommended model
+  // Function to download recommended model (Tauri only)
   const downloadRecommendedModel = async () => {
+    if (!isTauri()) {
+      toast.error('Model downloading is only available in desktop mode');
+      return;
+    }
+
     const recommendedModel = 'gemma3:1b';
 
     // Prevent duplicate downloads (defense in depth - backend also checks)
@@ -423,8 +439,13 @@ export function ModelSettingsModal({
     }
   };
 
-  // Function to delete Ollama model
+  // Function to delete Ollama model (Tauri only)
   const deleteOllamaModel = async (modelName: string) => {
+    if (!isTauri()) {
+      toast.error('Model deletion is only available in desktop mode');
+      return;
+    }
+
     try {
       const endpoint = ollamaEndpoint.trim() || null;
       await platformInvoke('delete_ollama_model', {

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { isTauri, platformListen, platformInvoke } from '@/lib/platform';
+import { isTauri, platformListen } from '@/lib/platform';
+import { apiClient } from '@/lib/apiClient';
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'sonner';
 import {
@@ -257,11 +258,12 @@ export function ModelManager({
 
   const saveModelSelection = async (modelName: string) => {
     try {
-      await platformInvoke('api_save_transcript_config', {
-        provider: 'localWhisper',
-        model: modelName,
-        apiKey: null
-      });
+      await apiClient.saveTranscriptConfig(
+        'localWhisper',
+        modelName,
+        undefined,
+        0
+      );
     } catch (error) {
       console.error('Failed to save model selection:', error);
     }
