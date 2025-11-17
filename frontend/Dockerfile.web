@@ -76,6 +76,12 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN addgroup --system --gid 1001 nodejs && \
     adduser --system --uid 1001 nextjs
 
+# Install runtime dependencies for custom server
+RUN corepack enable && corepack prepare pnpm@latest --activate
+COPY package.json ./
+RUN pnpm install --prod --ignore-scripts && \
+    rm -rf /root/.pnpm-store
+
 # Copy built application
 COPY --from=builder /app/public ./public
 
