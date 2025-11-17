@@ -6,12 +6,16 @@
 - Frontend (Next.js) serves on port **3118**
 - Backend (FastAPI) runs internally, accessed via Next.js proxy
 - Only **one port exposed** to Traefik/reverse proxy
-- All `/api/*` requests are automatically proxied to backend
+- All `/api/*` HTTP requests are automatically proxied to backend
+- WebSocket connections (`/api/ws/*`) are upgraded and proxied to backend
 
 ```
 Browser → Traefik → Port 3118 (Frontend)
                          ↓
-                    Next.js routes /api/* → Backend (internal)
+                    Custom Next.js Server
+                         ↓
+                    HTTP: /api/* → Backend (internal)
+                    WebSocket: /api/ws/* → Backend (internal)
 ```
 
 ## Deployment Steps
