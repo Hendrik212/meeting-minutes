@@ -29,7 +29,7 @@ interface SummaryGeneratorButtonGroupProps {
   onGenerateSummary: (customPrompt: string) => Promise<void>;
   customPrompt: string;
   summaryStatus: 'idle' | 'processing' | 'summarizing' | 'regenerating' | 'completed' | 'error';
-  availableTemplates: Array<{id: string, name: string, description: string}>;
+  availableTemplates: Array<{id: string, name: string, prompt: string}>;
   selectedTemplate: string;
   onTemplateSelect: (templateId: string, templateName: string) => void;
   hasTranscripts?: boolean;
@@ -177,7 +177,7 @@ export function SummaryGeneratorButtonGroup({
               <DropdownMenuItem
                 key={template.id}
                 onClick={() => onTemplateSelect(template.id, template.name)}
-                title={template.description}
+                title={template.prompt}
                 className="flex items-center justify-between gap-2"
               >
                 <span>{template.name}</span>
