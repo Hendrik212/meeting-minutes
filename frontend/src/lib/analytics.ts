@@ -26,6 +26,21 @@ export class Analytics {
   private static meetingsInSession: number = 0;
   private static deviceInfo: DeviceInfo | null = null;
 
+  /**
+   * Helper to safely invoke Tauri commands, returning null in web mode
+   */
+  private static async safeInvoke<T>(command: string, args?: any): Promise<T | null> {
+    if (!isTauri()) {
+      return null;
+    }
+    try {
+      return await platformInvoke(command, args);
+    } catch (error) {
+      console.error(`Failed to invoke ${command}:`, error);
+      return null;
+    }
+  }
+
   static async init(): Promise<void> {
     // Prevent duplicate initialization
     if (this.initialized) {
@@ -43,12 +58,20 @@ export class Analytics {
 
   private static async doInit(): Promise<void> {
     try {
+      // In web mode, analytics is not supported
+      if (!isTauri()) {
+        console.log('[Analytics] Web mode detected - analytics disabled');
+        this.initialized = true;  // Mark as initialized to prevent repeated warnings
+        return;
+      }
+
       await platformInvoke('init_analytics');
       this.initialized = true;
       console.log('Analytics initialized successfully');
     } catch (error) {
       console.error('Failed to initialize analytics:', error);
-      throw error;
+      // Don't throw - gracefully degrade
+      this.initialized = true;
     } finally {
       this.initializationPromise = null;
     }
@@ -56,6 +79,12 @@ export class Analytics {
 
   static async disable(): Promise<void> {
     try {
+      if (!isTauri()) {
+        console.log('[Analytics] Web mode - no analytics to disable');
+        this.initialized = false;
+        return;
+      }
+
       await platformInvoke('disable_analytics');
       this.initialized = false;
       this.currentUserId = null;
@@ -68,6 +97,9 @@ export class Analytics {
 
   static async isEnabled(): Promise<boolean> {
     try {
+      if (!isTauri()) {
+        return false;
+      }
       return await platformInvoke('is_analytics_enabled');
     } catch (error) {
       console.error('Failed to check analytics status:', error);
@@ -76,6 +108,12 @@ export class Analytics {
   }
 
   static async track(eventName: string, properties?: AnalyticsProperties): Promise<void> {
+    // In web mode, just log to console
+    if (!isTauri()) {
+      console.log('[Analytics]', eventName, properties);
+      return;
+    }
+
     if (!this.initialized) {
       console.warn('Analytics not initialized');
       return;
@@ -89,6 +127,13 @@ export class Analytics {
   }
 
   static async identify(userId: string, properties?: AnalyticsProperties): Promise<void> {
+    // In web mode, just log to console
+    if (!isTauri()) {
+      console.log('[Analytics] Identify:', userId, properties);
+      this.currentUserId = userId;
+      return;
+    }
+
     if (!this.initialized) {
       console.warn('Analytics not initialized');
       return;

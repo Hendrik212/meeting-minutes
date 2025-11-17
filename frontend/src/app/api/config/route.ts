@@ -5,12 +5,10 @@ import { NextRequest, NextResponse } from 'next/server';
  *
  * Returns the correct backend/WebSocket URLs by reading proxy headers.
  *
- * IMPORTANT: For production deployments with a domain name, you MUST set
- * NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL environment variables.
- *
- * Auto-detection ONLY works for:
- * - localhost development
- * - Direct IP access (e.g., 192.168.1.100)
+ * DEFAULT BEHAVIOR:
+ * - localhost/IP: Backend at port 5167
+ * - Domain name: Backend at same domain via /api path
+ * - Environment variables: Override auto-detection
  */
 export async function GET(request: NextRequest) {
   // Read proxy headers set by Traefik/nginx
@@ -19,9 +17,8 @@ export async function GET(request: NextRequest) {
 
   let backendUrl: string;
   let websocketUrl: string;
-  let requiresEnvVar = false;
 
-  // Priority 1: Environment variables (REQUIRED for production)
+  // Priority 1: Environment variables (override)
   if (process.env.NEXT_PUBLIC_API_URL) {
     backendUrl = process.env.NEXT_PUBLIC_API_URL;
   } else {
@@ -30,18 +27,13 @@ export async function GET(request: NextRequest) {
     const isIpAddress = /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(forwardedHost);
 
     if (isLocalhost || isIpAddress) {
-      // Development: Auto-detect backend on port 5167
+      // Development: Backend on port 5167
       const hostWithoutPort = forwardedHost.split(':')[0];
       backendUrl = `${forwardedProto}://${hostWithoutPort}:5167`;
     } else {
-      // Production domain: CANNOT auto-detect, MUST set environment variable
-      requiresEnvVar = true;
-      backendUrl = 'BACKEND_URL_NOT_CONFIGURED';
-      console.error(
-        '❌ NEXT_PUBLIC_API_URL environment variable is REQUIRED for production deployment!\n' +
-        `   Detected host: ${forwardedHost}\n` +
-        '   Set NEXT_PUBLIC_API_URL to your backend URL (e.g., https://api.yourdomain.com)'
-      );
+      // Production domain: Backend at same domain via /api path
+      // This is the standard deployment setup where backend is proxied at /api
+      backendUrl = `${forwardedProto}://${forwardedHost}/api`;
     }
   }
 
@@ -52,19 +44,14 @@ export async function GET(request: NextRequest) {
     const isIpAddress = /^\d+\.\d+\.\d+\.\d+(:\d+)?$/.test(forwardedHost);
 
     if (isLocalhost || isIpAddress) {
-      // Development: Auto-detect WebSocket on port 5167
+      // Development: WebSocket on port 5167
       const hostWithoutPort = forwardedHost.split(':')[0];
       const wsProto = forwardedProto === 'https' ? 'wss' : 'ws';
       websocketUrl = `${wsProto}://${hostWithoutPort}:5167`;
     } else {
-      // Production domain: CANNOT auto-detect
-      requiresEnvVar = true;
-      websocketUrl = 'WEBSOCKET_URL_NOT_CONFIGURED';
-      console.error(
-        '❌ NEXT_PUBLIC_WS_URL environment variable is REQUIRED for production deployment!\n' +
-        `   Detected host: ${forwardedHost}\n` +
-        '   Set NEXT_PUBLIC_WS_URL to your WebSocket URL (e.g., wss://api.yourdomain.com/ws)'
-      );
+      // Production domain: WebSocket at same domain via /api/ws path
+      const wsProto = forwardedProto === 'https' ? 'wss' : 'ws';
+      websocketUrl = `${wsProto}://${forwardedHost}/api/ws`;
     }
   }
 
@@ -72,8 +59,6 @@ export async function GET(request: NextRequest) {
     backendUrl,
     websocketUrl,
     detectedProxy: request.headers.has('x-forwarded-host') || request.headers.has('x-forwarded-proto'),
-    requiresEnvVar,
-    error: requiresEnvVar ? 'NEXT_PUBLIC_API_URL and NEXT_PUBLIC_WS_URL environment variables are required for production deployment' : null,
     headers: {
       forwardedProto,
       forwardedHost,

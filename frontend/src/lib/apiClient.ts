@@ -8,29 +8,29 @@
  * This allows gradual migration from Tauri to web without breaking existing code.
  */
 
+import { getBackendUrl } from './config';
+
 // Detect if running in Tauri environment
 function isTauriEnvironment(): boolean {
   return typeof window !== 'undefined' && '__TAURI__' in window;
-}
-
-// Get API base URL
-function getApiBaseUrl(): string {
-  if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5167';
-  }
-  return 'http://localhost:5167';
 }
 
 /**
  * API Client for backend communication
  */
 export class ApiClient {
-  private baseUrl: string;
   private isTauri: boolean;
 
   constructor() {
-    this.baseUrl = getApiBaseUrl();
     this.isTauri = isTauriEnvironment();
+    console.log('[ApiClient] Initialized in', this.isTauri ? 'Tauri' : 'Web', 'mode');
+  }
+
+  /**
+   * Get the current backend URL (may change after config is loaded)
+   */
+  private getBaseUrl(): string {
+    return getBackendUrl();
   }
 
   /**
@@ -40,7 +40,7 @@ export class ApiClient {
     endpoint: string,
     options?: RequestInit
   ): Promise<T> {
-    const url = `${this.baseUrl}${endpoint}`;
+    const url = `${this.getBaseUrl()}${endpoint}`;
 
     try {
       const response = await fetch(url, {
@@ -174,6 +174,64 @@ export class ApiClient {
     });
   }
 
+  async getTranscriptConfig(): Promise<any> {
+    return this.fetch('/get-transcript-config');
+  }
+
+  async saveTranscriptConfig(
+    provider: string,
+    model: string,
+    apiKey?: string,
+    diarization?: number
+  ): Promise<void> {
+    await this.fetch('/save-transcript-config', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider,
+        model,
+        apiKey,
+        diarization
+      })
+    });
+  }
+
+  async getApiKey(provider: string): Promise<{ api_key: string }> {
+    return this.fetch('/get-api-key', {
+      method: 'POST',
+      body: JSON.stringify({ provider })
+    });
+  }
+
+  async getTranscriptApiKey(provider: string): Promise<{ api_key: string }> {
+    return this.fetch('/get-transcript-api-key', {
+      method: 'POST',
+      body: JSON.stringify({ provider })
+    });
+  }
+
+  // ====================================================================
+  // Templates
+  // ====================================================================
+
+  async listTemplates(): Promise<{ templates: Array<{ id: string; name: string; prompt: string }> }> {
+    return this.fetch('/list-templates');
+  }
+
+  // ====================================================================
+  // Auto-Generate Settings
+  // ====================================================================
+
+  async getAutoGenerateSetting(): Promise<{ enabled: boolean }> {
+    return this.fetch('/get-auto-generate-setting');
+  }
+
+  async saveAutoGenerateSetting(enabled: boolean): Promise<{ success: boolean; enabled: boolean }> {
+    return this.fetch('/save-auto-generate-setting', {
+      method: 'POST',
+      body: JSON.stringify({ enabled })
+    });
+  }
+
   // ====================================================================
   // Audio Management (Web-specific)
   // ====================================================================
@@ -197,7 +255,7 @@ export class ApiClient {
       formData.append('meeting_id', meetingId);
     }
 
-    const url = `${this.baseUrl}/audio/upload`;
+    const url = `${this.getBaseUrl()}/audio/upload`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -214,7 +272,7 @@ export class ApiClient {
   }
 
   async downloadAudio(meetingId: string): Promise<Blob> {
-    const url = `${this.baseUrl}/audio/download/${meetingId}`;
+    const url = `${this.getBaseUrl()}/audio/download/${meetingId}`;
 
     const response = await fetch(url);
 

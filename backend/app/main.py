@@ -908,6 +908,78 @@ async def download_audio(meeting_id: str):
         logger.error(f"Error downloading audio: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
 
+# ====================================================================
+# Templates API
+# ====================================================================
+
+@app.get("/list-templates")
+async def list_templates():
+    """
+    Get list of available summary templates
+
+    For now, returns a predefined list of templates.
+    Can be expanded to read from database or files.
+    """
+    templates = [
+        {
+            "id": "default",
+            "name": "Default Summary",
+            "prompt": "Generate a summary of the meeting transcript."
+        },
+        {
+            "id": "action-items",
+            "name": "Action Items",
+            "prompt": "Extract all action items from the meeting transcript. List who is responsible and any deadlines mentioned."
+        },
+        {
+            "id": "decisions",
+            "name": "Key Decisions",
+            "prompt": "List all key decisions made during the meeting and the reasoning behind them."
+        },
+        {
+            "id": "detailed",
+            "name": "Detailed Summary",
+            "prompt": "Create a detailed summary of the meeting including: main topics discussed, key points, decisions made, and action items."
+        }
+    ]
+    return {"templates": templates}
+
+# ====================================================================
+# Auto-Generate Settings
+# ====================================================================
+
+class AutoGenerateSettingRequest(BaseModel):
+    enabled: bool
+
+@app.get("/get-auto-generate-setting")
+async def get_auto_generate_setting():
+    """
+    Get auto-generate summary setting
+
+    Returns whether summaries should be automatically generated after recording.
+    """
+    try:
+        # Try to read from database or config file
+        # For now, return default value
+        return {"enabled": False}
+    except Exception as e:
+        logger.error(f"Error getting auto-generate setting: {str(e)}", exc_info=True)
+        return {"enabled": False}
+
+@app.post("/save-auto-generate-setting")
+async def save_auto_generate_setting(request: AutoGenerateSettingRequest):
+    """
+    Save auto-generate summary setting
+    """
+    try:
+        # Save to database or config file
+        # For now, just acknowledge the request
+        logger.info(f"Auto-generate setting updated: {request.enabled}")
+        return {"success": True, "enabled": request.enabled}
+    except Exception as e:
+        logger.error(f"Error saving auto-generate setting: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint for Docker and monitoring"""
